@@ -123,9 +123,7 @@ export default class App {
                     }
                 }
                 else {
-                    alert(apiResp.message);
-                    console.error(apiResp);
-
+                    this.catchError(apiResp);
                     if ('error' in this.events.list) {
                         this.events.list.error(this);
                     }
@@ -141,10 +139,7 @@ export default class App {
 
                 this.root.pending.elements = false;
             })
-            .catch((error) => {
-                alert(error);
-                console.error(error);
-            });
+            .catch(this.catchError);
     }
 
     /**
@@ -175,14 +170,10 @@ export default class App {
                         }
                     }
                     else {
-                        alert(apiResp.message);
-                        console.error(apiResp);
+                        this.catchError(apiResp);
                     }
                 })
-                .catch((error) => {
-                    alert(error);
-                    console.error(error);
-                });
+                .catch(this.catchError);
         }
     }
 
@@ -253,18 +244,14 @@ export default class App {
 
             // Erreur dans la réponse
             else {
-                alert('Erreur : ' + apiResp.message);
-                console.error(apiResp);
+                this.catchError(apiResp);
             }
 
             if (options.pending) {
                 self.pending[options.pending] = false;
             }
         })
-        .catch((error) => {
-            alert(error);
-            console.error(error);
-        });
+        .catch(this.catchError);
     }
 
     /**
@@ -280,5 +267,19 @@ export default class App {
             }
         }
         return false;
+    }
+
+    /**
+     * Traite les retours d'erreur via un paramètre unique
+     * @param {Mixed} error Le retour d'erreur. Si c'est un objet et qu'une clé message existe, le message est affiché en alert
+     */
+    catchError(error) {
+        if ('message' in error) {
+            alert(error.message);
+        }
+        else {
+            alert("Erreur d'exécution");
+        }
+        console.error(error);
     }
 }
