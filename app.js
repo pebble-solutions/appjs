@@ -320,11 +320,11 @@ export default class App {
             const user = userCredential.user;
             this.user = user;
 
-            console.log("Voici ce que j'ai reçu de Firebase", user);
+            vm.$store.commit('login', user);
 
-            this.authWithFirebase()
-            .then((resp) => {
-                console.log("Voici ce que j'ai authentifié depuis le serveur de licence Pebble", resp);
+            this.apiGet('/structure/GET/list')
+            .then((data) => {
+                vm.$store.commit('structures', data);
             })
             .catch(this.catchError);
         })
@@ -378,26 +378,33 @@ export default class App {
         }
     }
 
-    /** 
-     * Envoie une requête pour liste les structures autorisées pour l'utilisateur
-     * @returns {Promise}
-     */
-    listStructures() {
-        return new Promise((resolve, reject) => {
-            this.ax.get('/structures/GET/list')
+    apiGet(apiUrl, params) {
+        let auth = getAuth();
+
+        return getIdToken(auth.currentUser)
+        .then((idToken) => {
+
+            params = typeof params === 'undefined' ? {} : params;
+            params.idToken = idToken;
+
+            this.ax.get(apiUrl, {
+                params
+            })
             .then((resp) => {
                 if (resp.data.status === 'OK') {
-                    resolve(resp);
+                    return resp.data.data;
                 }
                 else {
-                    reject(resp.data);
+                    console.error(resp);
+                    throw new Error(`Erreur dans l'échange avec l'API : ${resp.data.message}`);
                 }
             })
-            .catch((resp) => {
-                reject(resp);
-            });
-        });
+            .catch(this.catchError);
+        })
+        .catch(this.catchError);
     }
+
+
 
 
     authWithFirebase() {
