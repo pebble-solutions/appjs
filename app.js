@@ -314,7 +314,7 @@ export default class App {
      */
     login(vm, login, password) {
 
-        let auth = getAuth();
+        let auth = getAuth(this.firebaseApp);
         return signInWithEmailAndPassword(auth, login, password)
         .then((userCredential) => {
             const user = userCredential.user;
@@ -358,7 +358,7 @@ export default class App {
      * @returns {Promise}
      */
     loginProvider(authProvider) {
-        let auth = getAuth();
+        let auth = getAuth(this.firebaseApp);
 
         if (authProvider === 'google') {
 
