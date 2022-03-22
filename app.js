@@ -438,6 +438,32 @@ export default class App {
 
 
     /**
+     * Envoie une requête en POST à l'API via Axios
+     * 
+     * @param {String} apiUrl Url de l'API à appeler
+     * @param {Object} params Liste des paramètres à passer via la méthode POST
+     * 
+     * @returns {Promise}
+     */
+    apiPost(apiUrl, params) {
+        let auth = getAuth();
+
+        return getIdToken(auth.currentUser)
+        .then((idToken) => {
+            let data = new FormData();
+            for (let key in params) {
+                data.append(key, params[key]);
+            }
+
+            this.ax.post(apiUrl+'idToken='+idToken, data);
+        })
+        .catch((error) => {
+            throw Error (error);
+        })
+    }
+
+
+    /**
      * Authentifie l'utilisateur au niveau de l'API. Pour s'authentifier, l'utilisateur devra 
      * au préalable être authentifié auprès de Firebase. L'idToken de firbase servira de point de 
      * contrôle. L'authentification à l'API retourne un nouveau token qui servira à suivre les 
@@ -470,5 +496,23 @@ export default class App {
         .catch((error) => {
             throw Error(error);
         });
+    }
+
+
+    /**
+     * Duplique l'élément ouvert dans un élément temporaire du store
+     * @param {Object} vm L'instance vueJS contenant une clé $store
+     */
+    makeTmpElement(vm) {
+        let element = vm.$store.state.openedElement;
+
+        if (element) {
+            let tmp = {};
+            for (let key in element) {
+                tmp[key] = element[key];
+            }
+
+            vm.$store.commit('tmpElement', tmp);
+        }
     }
 }
