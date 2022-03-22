@@ -39,6 +39,8 @@ export default class App {
         this.api = cfg.api;
         this.name = cfg.name;
         this.cfg = cfg.cfg;
+        this.firebase_user = null;
+        this.local_user = null;
 
         this.ax = axios.create({
             baseURL: this.api.baseURL
@@ -261,7 +263,7 @@ export default class App {
 
     /**
      * Vérifie si l'élément passé est actif
-     *
+     * 
      * @param {Object} vm L'instance VueJS
      * @param {Object} element L'élément à vérifier
      * 
@@ -318,17 +320,23 @@ export default class App {
         return signInWithEmailAndPassword(auth, login, password)
         .then((userCredential) => {
             const user = userCredential.user;
-            this.user = user;
+            this.firebase_user = user;
+            return this.authToApi();
 
-            vm.$store.commit('login', user);
+            // vm.$store.commit('login', user);
 
-            this.apiGet('/structure/GET/list')
-            .then((data) => {
-                vm.$store.commit('structures', data);
-            })
-            .catch(this.catchError);
+            // this.apiGet('/structure/GET/list')
+            // .then((data) => {
+            //     vm.$store.commit('structures', data);
+            // })
+            // .catch(this.catchError);
         })
-        .catch(this.catchError);
+        .then((resp) => {
+            return resp;
+        })
+        .catch((error) => {
+            throw Error(error);
+        });
 
         // let data = new FormData();
         // data.append('login', login);
@@ -354,7 +362,9 @@ export default class App {
     
     /**
      * Ouvre une session via un prestataire externe
+     * 
      * @param {String} authProvider Le fournisseur de service de connexion (ex : google)
+     * 
      * @returns {Promise}
      */
     loginProvider(authProvider) {
@@ -370,7 +380,9 @@ export default class App {
                 const credential = GoogleAuthProvider.credentialFromResult(result);
                 console.log(credential);
                 // ...
-            }).catch(this.catchError);
+            }).catch((error) => {
+                throw Error(error);
+            });
         }
 
         else {
@@ -378,6 +390,15 @@ export default class App {
         }
     }
 
+
+    /**
+     * Envoie une requête en GET à l'API via Axios
+     * 
+     * @param {String} apiUrl Url de l'API à appeler
+     * @param {Object} params Liste des paramètres à passer via la méthode get
+     * 
+     * @returns {Promise}
+     */
     apiGet(apiUrl, params) {
         let auth = getAuth();
 
@@ -399,15 +420,26 @@ export default class App {
                     throw new Error(`Erreur dans l'échange avec l'API : ${resp.data.message}`);
                 }
             })
-            .catch(this.catchError);
+            .catch((error) => {
+                throw Error(error);
+            });
         })
-        .catch(this.catchError);
+        .catch((error) => {
+            throw Error(error);
+        });
     }
 
 
-
-
-    authWithFirebase() {
+    /**
+     * Authentifie l'utilisateur au niveau de l'API. Pour s'authentifier, l'utilisateur devra 
+     * au préalable être authentifié auprès de Firebase. L'idToken de firbase servira de point de 
+     * contrôle. L'authentification à l'API retourne un nouveau token qui servira à suivre les 
+     * futures requêtes.
+     * 
+     * @returns {Promise} Si la promesse est résolut, retourne un objet contenant un token, le login 
+     * et les structures attachées
+     */
+    authToApi() {
         let auth = getAuth();
 
         return getIdToken(auth.currentUser)
@@ -418,13 +450,18 @@ export default class App {
 
                 this.ax.post('/auth?firebase=1', data)
                 .then((resp) => {
-                    resolve(resp);
+                    let user = resp.data.data;
+                    this.ax.defaults.headers.common['Authorization'] = user.token.jwt;
+                    this.local_user = user;
+                    resolve(user);
                 })
                 .catch((resp) => {
                     reject(resp);
                 });
             });
         })
-        .catch(this.catchError);
+        .catch((error) => {
+            throw Error(error);
+        });
     }
 }
