@@ -316,7 +316,14 @@ export default class App {
      */
     login(vm, login, password) {
 
-        let auth = getAuth(this.firebaseApp);
+        let  auth;
+        
+        try {
+            auth = getAuth(this.firebaseApp);
+        } catch (error) {
+            throw Error(error);
+        }
+
         return signInWithEmailAndPassword(auth, login, password)
         .then((userCredential) => {
             const user = userCredential.user;
