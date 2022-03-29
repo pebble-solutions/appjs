@@ -48,6 +48,8 @@ export default class App {
 
         this.firebaseApp = initializeApp(cfg.firebaseConfig);
 
+        this.events = cfg.events;
+
         if (typeof this.events === 'undefined') {
             this.events = {};
         }
@@ -90,61 +92,31 @@ export default class App {
      * Crée une requête pour lister les éléments de l'application
      * @param {Object} vm               Instance vueJS
      * @param {Object} query            Paramètres de la requête sous la forme key : value
-     * @param {String} mode             replace (default), update
-     * @param {Function} callback       Fonction appelée après la recherche
+     * 
+     * @returns {Promise}
      */
-    listElements(vm, query, mode, callback) {
+    listElements(vm, query) {
 
         if ('before' in this.events.list) {
             this.events.list.before(this);
         }
 
-        mode = typeof mode === 'undefined' ? 'update' : mode;
-
         vm.pending.elements = true;
 
-        this.ax.get('/' + this.api.elements + '/GET/list', {
-            params: query
+        return this.apiGet('/' + this.api.elements + '/GET/list', query)
+        .then((data) => {
+            if ('success' in this.events.list) {
+                this.events.list.success(this);
+            }
+            return data;
         })
-            .then((resp) => {
-                let apiResp = resp.data;
+        .catch((error) => { 
+            if ('error' in this.events.list) {
+                this.events.list.error(this);
+            }
 
-                if (apiResp.status === 'OK') {
-                    if (mode == 'replace') {
-                        vm.$store.dispatch('refreshElements', {
-                            action: 'replace',
-                            elements: apiResp.data
-                        });
-                    }
-                    else {
-                        vm.$store.dispatch('refreshElements', {
-                            action: 'update',
-                            elements: apiResp.data
-                        });
-                    }
-
-                    if ('success' in this.events.list) {
-                        this.events.list.success(this);
-                    }
-                }
-                else {
-                    this.catchError(apiResp);
-                    if ('error' in this.events.list) {
-                        this.events.list.error(this);
-                    }
-                }
-
-                if ('done' in this.events.list) {
-                    this.events.list.done(this);
-                }
-
-                if (typeof callback !== 'undefined') {
-                    callback(this);
-                }
-
-                vm.pending.elements = false;
-            })
-            .catch(this.catchError);
+            throw Error(error)
+        });
     }
 
     /**
@@ -190,9 +162,6 @@ export default class App {
      * @param {Object} query            La liste des modification sous la forme key: value
      * @param {Object} options          Un objet de paramétrage facultatif
      * - pending           String       Une clé de this.pending qui sera passée à true lors de l'opération
-     * - callback          Function     Une fonction de callback qui prendra en premier argument la réponse du serveur et en deuxième l'objet vuejs
-     * - update_data       Array/Bool   Une liste de clés à mettre à jour sur l'objet ou un booléen. Si c'est un booléen à True, alors l'ensemble des
-     *                                  éléments reçus depuis le serveur seront mis à jour
      * - id                Int          Si définit, l'ID sur lequel les données sont enregistrées. Dans le cas contraire, l'ID chargé.
      */
     record(vm, query, options) {
@@ -214,51 +183,24 @@ export default class App {
             id = options.id;
         }
         else {
-            id = vm.$store.openedElement.id;
+            id = vm.$store.state.openedElement.id;
         }
 
-        this.ax.post('/' + this.api.elements + '/POST/' + id + '?api_hierarchy=1', {
-            params: query
-        })
-        .then((resp) => {
-            let apiResp = resp.data;
-
-            if (apiResp.status === 'OK') {
-
-                if (options.callback) {
-                    options.callback(resp, this);
-                }
-
-                if (options.update_data) {
-                    let data = {};
-
-                    if (typeof options.update_data === 'object') {
-                        options.update_data.forEach((key) => {
-                            data[key] = apiResp.data[key];
-                        });
-                    }
-                    else {
-                        data = apiResp.data;
-                    }
-
-                    vm.$store.dispatch('refreshOpened', data);
-                }
-
-                if ('recorded' in this.events.openedElement) {
-                    this.events.openedElement.recorded(this);
-                }
-            }
-
-            // Erreur dans la réponse
-            else {
-                this.catchError(apiResp);
-            }
-
+        return this.apiPost('/' + this.api.elements + '/POST/' + id + '?api_hierarchy=1', query)
+        .then((data) => {
             if (options.pending) {
                 self.pending[options.pending] = false;
             }
+
+            if ('recorded' in this.events.openedElement) {
+                this.events.openedElement.recorded(this);
+            }
+
+            return data;
         })
-        .catch(this.catchError);
+        .catch((error) => {
+            throw Error(error);
+        });
     }
 
     /**
@@ -302,7 +244,7 @@ export default class App {
             return message;
         }
         else {
-            alert(message);
+            window.alert(message);
         }
     }
 
@@ -410,12 +352,10 @@ export default class App {
         let auth = getAuth();
 
         return getIdToken(auth.currentUser)
-        .then((idToken) => {
-
+        .then(() => {
             params = typeof params === 'undefined' ? {} : params;
-            params.idToken = idToken;
 
-            this.ax.get(apiUrl, {
+            return this.ax.get(apiUrl, {
                 params
             })
             .then((resp) => {
@@ -449,13 +389,24 @@ export default class App {
         let auth = getAuth();
 
         return getIdToken(auth.currentUser)
-        .then((idToken) => {
+        .then(() => {
             let data = new FormData();
             for (let key in params) {
                 data.append(key, params[key]);
             }
 
-            this.ax.post(apiUrl+'idToken='+idToken, data);
+            return this.ax.post(apiUrl, data).then((resp) => {
+                if (resp.data.status === 'OK') {
+                    return resp.data.data;
+                }
+                else {
+                    console.error(resp);
+                    throw new Error(`Erreur dans l'échange avec l'API : ${resp.data.message}`);
+                }
+            })
+            .catch((error) => {
+                throw Error(error);
+            });
         })
         .catch((error) => {
             throw Error (error);
@@ -514,5 +465,13 @@ export default class App {
 
             vm.$store.commit('tmpElement', tmp);
         }
+    }
+
+    /**
+     * Vide la copie temporaire de l'élément
+     * @param {Object} vm L'instance vueJS contenant une clé $store
+     */
+    clearTmpElement(vm) {
+        vm.$store.commit('tmpElement', null);
     }
 }
