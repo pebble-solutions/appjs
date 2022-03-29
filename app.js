@@ -436,6 +436,7 @@ export default class App {
                 .then((resp) => {
                     let user = resp.data.data;
                     this.ax.defaults.headers.common['Authorization'] = user.token.jwt;
+                    this.ax.defaults.headers.common['Structure'] = user.login.primary_structure;
                     this.local_user = user;
                     resolve(user);
                 })
