@@ -2,6 +2,7 @@ import axios from "axios";
 import * as bootstrap from "bootstrap";
 import { initializeApp } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, getIdToken } from "firebase/auth";
+import { StructureUnavailableError, AuthProviderUnreferencedError } from "./errors";
 
 
 /**
@@ -41,6 +42,7 @@ export default class App {
         this.cfg = cfg.cfg;
         this.firebase_user = null;
         this.local_user = null;
+        this.active_structure_id = null;
 
         this.ax = axios.create({
             baseURL: this.api.baseURL
@@ -116,6 +118,24 @@ export default class App {
             }
 
             throw Error(error)
+        });
+    }
+
+    /**
+     * Charge les sous-objets d'un élément
+     * @param {Object} vm Le composant ou l'instance vuejs
+     * @param {Object} element L'élément comportant un ID
+     * @returns {Object}
+     */
+    loadExtended(vm, element) {
+        vm.pending.extended = true;
+
+        return this.apiGet('/' + this.api.elements + '/GET/' + element.id + '?api_hierarchy=1')
+        .then((data) => {
+            return data;
+        })
+        .catch((error) => {
+            throw Error(error);
         });
     }
 
@@ -237,8 +257,9 @@ export default class App {
             if (typeof error === 'string') {
                 message = error;
             }
-            console.error(error);
         }
+
+        console.error(message, error);
 
         if (options.mode === 'message') {
             return message;
@@ -271,14 +292,6 @@ export default class App {
             const user = userCredential.user;
             this.firebase_user = user;
             return this.authToApi();
-
-            // vm.$store.commit('login', user);
-
-            // this.apiGet('/structure/GET/list')
-            // .then((data) => {
-            //     vm.$store.commit('structures', data);
-            // })
-            // .catch(this.catchError);
         })
         .then((resp) => {
             return resp;
@@ -286,26 +299,6 @@ export default class App {
         .catch((error) => {
             throw Error(error);
         });
-
-        // let data = new FormData();
-        // data.append('login', login);
-        // data.append('password', password);
-
-        // return new Promise((resolve, reject) => {
-        //     this.ax.post('/auth?firebase_auth=1', data)
-        //     .then((resp) => {
-        //         console.log(resp);
-        //         if (resp.data.status === 'OK') {
-        //             resolve(resp);
-        //         }
-        //         else {
-        //             reject(resp.data);
-        //         }
-        //     })
-        //     .catch((resp) => {
-        //         reject(resp);
-        //     });
-        // });
     }
 
     
@@ -335,7 +328,7 @@ export default class App {
         }
 
         else {
-            throw new Error(`Le fournisseur de service ${authProvider} n'est pas référencé.`);
+            throw new AuthProviderUnreferencedError(authProvider);
         }
     }
 
@@ -420,6 +413,11 @@ export default class App {
      * contrôle. L'authentification à l'API retourne un nouveau token qui servira à suivre les 
      * futures requêtes.
      * 
+     * Une fois authentifié auprès de l'API, on vérifie la structure à activer :
+     * - Soit il y a une primary_structure, dans ce cas c'est elle qui sert de structure active à la connexion
+     * - Dans le cas contraire, c'est la première structure du tableau des structures qui sert de structure par défaut
+     * Le token d'accès et la structure sont stockés dans le header de toutes les futures requêtes.
+     * 
      * @returns {Promise} Si la promesse est résolut, retourne un objet contenant un token, le login 
      * et les structures attachées
      */
@@ -435,9 +433,24 @@ export default class App {
                 this.ax.post('/auth?firebase=1', data)
                 .then((resp) => {
                     let user = resp.data.data;
-                    this.ax.defaults.headers.common['Authorization'] = user.token.jwt;
-                    this.ax.defaults.headers.common['Structure'] = user.login.primary_structure;
+
+                    // Structure active à la connexion
+                    // - primary_structure (par défaut)
+                    // - la première structure renvoyé le cas échéant
+                    this.active_structure_id = user.login.primary_structure;
+                    if (!this.active_structure_id && user.structures.length) {
+                        this.active_structure_id = user.structures[0].id;
+                    }
+                    
+                    if (!this.active_structure_id) {
+                        console.warn("Aucune structure active. L'API risque de ne retourner aucune valeur.");
+                    }
+
                     this.local_user = user;
+
+                    this.ax.defaults.headers.common['Authorization'] = user.token.jwt;
+                    this.ax.defaults.headers.common['Structure'] = this.active_structure_id;
+
                     resolve(user);
                 })
                 .catch((resp) => {
@@ -448,6 +461,24 @@ export default class App {
         .catch((error) => {
             throw Error(error);
         });
+    }
+
+    /**
+     * Active une structure. Modifie l'ID de la structure active dans l'application et 
+     * change l'information stockée dans le header de chaque requête.
+     * @param {Integer} id L'ID de la structure à activer
+     */
+    setStructure(id) {
+        let found = this.local_user.structures.find(e => e.id == id);
+
+        if (found) {
+            this.active_structure_id = id;
+            this.ax.defaults.headers.common['Structure'] = this.active_structure_id;
+        }
+
+        else {
+            throw new StructureUnavailableError(id);
+        }
     }
 
 
@@ -461,7 +492,9 @@ export default class App {
         if (element) {
             let tmp = {};
             for (let key in element) {
-                tmp[key] = element[key];
+                if (typeof element[key] !== 'object') {
+                    tmp[key] = element[key];
+                }
             }
 
             vm.$store.commit('tmpElement', tmp);
