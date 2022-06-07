@@ -1,7 +1,7 @@
 import axios from "axios";
 import * as bootstrap from "bootstrap";
 import { initializeApp } from "firebase/app";
-import { getAuth, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, getIdToken } from "firebase/auth";
+import { getAuth, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, getIdToken, signOut, onAuthStateChanged } from "firebase/auth";
 import { StructureUnavailableError, AuthProviderUnreferencedError } from "./errors";
 
 
@@ -256,6 +256,20 @@ export default class App {
         if ('message' in error) {
             message = error.message;
         }
+        else if ('statusText' in error) {
+            let apiMessage;
+            if (error.data) {
+                if (error.data.message) {
+                    apiMessage = `${error.data.message} (${error.status} ${error.statusText})`;
+                }
+            }
+            if (!apiMessage) {
+                message = `${error.status} ${error.statusText}`;
+            }
+            else {
+                message = apiMessage;
+            }
+        }
         else {
             if (typeof error === 'string') {
                 message = error;
@@ -291,14 +305,6 @@ export default class App {
         }
 
         return signInWithEmailAndPassword(auth, login, password)
-        .then((userCredential) => {
-            const user = userCredential.user;
-            this.firebase_user = user;
-            return this.authToApi();
-        })
-        .then((resp) => {
-            return resp;
-        })
         .catch((error) => {
             throw Error(error);
         });
@@ -320,12 +326,7 @@ export default class App {
             const provider = new GoogleAuthProvider();
 
             return signInWithPopup(auth, provider)
-            .then((result) => {
-                // This gives you a Google Access Token. You can use it to access the Google API.
-                const credential = GoogleAuthProvider.credentialFromResult(result);
-                console.log(credential);
-                // ...
-            }).catch((error) => {
+            .catch((error) => {
                 throw Error(error);
             });
         }
@@ -427,6 +428,8 @@ export default class App {
     authToApi() {
         let auth = getAuth();
 
+        this.dispatchEvent('auth');
+
         return getIdToken(auth.currentUser)
         .then((idtk) => {
             return new Promise((resolve, reject) => {
@@ -455,6 +458,7 @@ export default class App {
                     this.ax.defaults.headers.common['Structure'] = this.active_structure_id;
 
                     this.dispatchEvent('authChanged', user);
+                    this.dispatchEvent('structureChanged', this.active_structure_id);
 
                     // Un fois connecté, on lance un timer sur l'expiration du token d'accès
                     // Lors de l'expiration, si l'application est toujours active, une fonction 
@@ -463,8 +467,17 @@ export default class App {
 
                     resolve(user);
                 })
-                .catch((resp) => {
-                    reject(resp);
+                .catch((error) => {
+                    let message;
+                    if(error.response) {
+                        message = this.catchError(error.response, {
+                            mode: 'message'
+                        });
+                    }
+                    else {
+                        message = error;
+                    }
+                    reject(message);
                 });
             });
         })
@@ -576,5 +589,39 @@ export default class App {
             })
             .catch(this.catchError);
         }, diff);
+    }
+
+    /**
+     * Ferme la session firebase et vide l'authentification
+     */
+    logout() {
+        let auth = getAuth();
+        signOut(auth);
+        this.dispatchEvent('logout');
+    }
+
+    /**
+     * Lance les processus de contrôle de l'authentification
+     */
+    checkAuth() {
+        let auth = getAuth();
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                this.firebase_user = user;
+                this.authToApi()
+                .catch((error) => {
+                    let message = this.catchError(error, {
+                        mode: 'message'
+                    });
+                    this.dispatchEvent('authError', message);
+                });
+            }
+            else {
+                this.clearAuth();
+            }
+
+            this.dispatchEvent('authInited', user);
+        });
     }
 }
