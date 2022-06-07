@@ -43,6 +43,7 @@ export default class App {
         this.firebase_user = null;
         this.local_user = null;
         this.active_structure_id = null;
+        this.refreshAuthTimer = null;
 
         this.ax = axios.create({
             baseURL: this.api.baseURL
@@ -243,6 +244,9 @@ export default class App {
     /**
      * Traite les retours d'erreur via un paramètre unique
      * @param {Mixed} error Le retour d'erreur. Si c'est un objet et qu'une clé message existe, le message est affiché en alert
+     * @param {Object} options
+     * - mode               Défaut null / message (return le message)
+     * - check_status       Défaut false / analyse le status de réponse, déclenche les actions automatiques si nécessaires
      */
     catchError(error, options) {
 
@@ -266,6 +270,17 @@ export default class App {
         }
         else {
             window.alert(message);
+        }
+
+        if (options.check_status) {
+            if (error.response) {
+                let status = error.response.status;
+
+                // L'utilisateur n'est plus autorisé, la session a expirée
+                if (status === 401) {
+                    this.clearAuth();
+                }
+            }
         }
     }
 
@@ -451,6 +466,13 @@ export default class App {
                     this.ax.defaults.headers.common['Authorization'] = user.token.jwt;
                     this.ax.defaults.headers.common['Structure'] = this.active_structure_id;
 
+                    this.dispatchEvent('authChanged', user);
+
+                    // Un fois connecté, on lance un timer sur l'expiration du token d'accès
+                    // Lors de l'expiration, si l'application est toujours active, une fonction 
+                    // refresh sera utilisée pour mettre à jour les informations de connexion.
+                    this.startAuthTimer();
+
                     resolve(user);
                 })
                 .catch((resp) => {
@@ -474,6 +496,7 @@ export default class App {
         if (found) {
             this.active_structure_id = id;
             this.ax.defaults.headers.common['Structure'] = this.active_structure_id;
+            this.dispatchEvent('structureChanged', found);
         }
 
         else {
@@ -507,5 +530,63 @@ export default class App {
      */
     clearTmpElement(vm) {
         vm.$store.commit('tmpElement', null);
+    }
+
+    /**
+     * Vide les informations d'authentification :
+     * - Les headers HTTP
+     * - Les éléments temporaires stockés
+     */
+    clearAuth() {
+
+        this.dispatchEvent('beforeClearAuth');
+
+        this.ax.defaults.headers.common['Structure'] = 0;
+        this.ax.defaults.headers.common['Authorization'] = '';
+        this.active_structure_id = null;
+        this.local_user = null;
+
+        this.dispatchEvent('authCleared');
+    }
+
+    /**
+     * Ajoute un observeur d'événement sur les actions générales de l'application
+     * @param {String} event L'événement à observer
+     * @param {Function} fn La fonction de callback
+     */
+    addEventListener(event, fn) {
+        if (typeof this.events[event] === 'undefined') {
+            this.events[event] = [];
+        }
+
+        this.events[event].push(fn);
+    }
+
+    /**
+     * Exécute les fonctions de callback liées à un événement
+     * @param {String} event Événement à exécuter
+     * @param {Mixed} payload Informations communiquées par l'événement
+     */
+    dispatchEvent(event, payload) {
+        if (typeof this.events[event] === 'object') {
+            this.events[event].forEach(fn => fn(payload));
+        }
+    }
+
+    /**
+     * Lancer un timer qui permettra de récupérer un nouveau token d'accès depuis le refresh token lorsque 
+     * la session aura expirée. Le rafraichissement est lancé 20 secondes avant l'expiration du token en cours.
+     */
+    startAuthTimer() {
+        let exp = new Date(this.local_user.token.exp * 1000);
+        let diff = exp.getTime() - Date.now() - 20000;
+
+        this.refreshAuthTimer = setTimeout(() => {
+            this.authToApi()
+            .then(user => {
+                this.dispatchEvent('authRefreshed', user);
+            })
+            .catch(this.catchError);
+        }, diff);
     }
 }
