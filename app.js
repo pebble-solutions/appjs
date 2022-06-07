@@ -246,7 +246,6 @@ export default class App {
      * @param {Mixed} error Le retour d'erreur. Si c'est un objet et qu'une clé message existe, le message est affiché en alert
      * @param {Object} options
      * - mode               Défaut null / message (return le message)
-     * - check_status       Défaut false / analyse le status de réponse, déclenche les actions automatiques si nécessaires
      */
     catchError(error, options) {
 
@@ -270,17 +269,6 @@ export default class App {
         }
         else {
             window.alert(message);
-        }
-
-        if (options.check_status) {
-            if (error.response) {
-                let status = error.response.status;
-
-                // L'utilisateur n'est plus autorisé, la session a expirée
-                if (status === 401) {
-                    this.clearAuth();
-                }
-            }
         }
     }
 
