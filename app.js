@@ -1,7 +1,7 @@
 import axios from "axios";
 import * as bootstrap from "bootstrap";
 import { initializeApp } from "firebase/app";
-import { getAuth, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, getIdToken, setPersistence, browserSessionPersistence } from "firebase/auth";
+import { getAuth, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, getIdToken, signOut, onAuthStateChanged } from "firebase/auth";
 import { StructureUnavailableError, AuthProviderUnreferencedError } from "./errors";
 
 
@@ -43,6 +43,7 @@ export default class App {
         this.firebase_user = null;
         this.local_user = null;
         this.active_structure_id = null;
+        this.refreshAuthTimer = null;
 
         this.ax = axios.create({
             baseURL: this.api.baseURL
@@ -243,6 +244,8 @@ export default class App {
     /**
      * Traite les retours d'erreur via un paramètre unique
      * @param {Mixed} error Le retour d'erreur. Si c'est un objet et qu'une clé message existe, le message est affiché en alert
+     * @param {Object} options
+     * - mode               Défaut null / message (return le message)
      */
     catchError(error, options) {
 
@@ -252,6 +255,20 @@ export default class App {
 
         if ('message' in error) {
             message = error.message;
+        }
+        else if ('statusText' in error) {
+            let apiMessage;
+            if (error.data) {
+                if (error.data.message) {
+                    apiMessage = `${error.data.message} (${error.status} ${error.statusText})`;
+                }
+            }
+            if (!apiMessage) {
+                message = `${error.status} ${error.statusText}`;
+            }
+            else {
+                message = apiMessage;
+            }
         }
         else {
             if (typeof error === 'string') {
@@ -287,18 +304,7 @@ export default class App {
             throw Error(error);
         }
 
-        return setPersistence(auth, browserSessionPersistence)
-        .then(() => {
-            return signInWithEmailAndPassword(auth, login, password);
-        })
-        .then((userCredential) => {
-            const user = userCredential.user;
-            this.firebase_user = user;
-            return this.authToApi();
-        })
-        .then((resp) => {
-            return resp;
-        })
+        return signInWithEmailAndPassword(auth, login, password)
         .catch((error) => {
             throw Error(error);
         });
@@ -320,12 +326,7 @@ export default class App {
             const provider = new GoogleAuthProvider();
 
             return signInWithPopup(auth, provider)
-            .then((result) => {
-                // This gives you a Google Access Token. You can use it to access the Google API.
-                const credential = GoogleAuthProvider.credentialFromResult(result);
-                console.log(credential);
-                // ...
-            }).catch((error) => {
+            .catch((error) => {
                 throw Error(error);
             });
         }
@@ -426,11 +427,9 @@ export default class App {
      */
     authToApi(user) {
 
-        if (!this.firebase_user) {
-            this.firebase_user = user;
-        }
-        
-        return getIdToken(user)
+        this.dispatchEvent('auth');
+
+        return getIdToken(auth.currentUser)
         .then((idtk) => {
             return new Promise((resolve, reject) => {
                 let data = new FormData();
@@ -457,10 +456,27 @@ export default class App {
                     this.ax.defaults.headers.common['Authorization'] = user.token.jwt;
                     this.ax.defaults.headers.common['Structure'] = this.active_structure_id;
 
+                    this.dispatchEvent('authChanged', user);
+                    this.dispatchEvent('structureChanged', this.active_structure_id);
+
+                    // Un fois connecté, on lance un timer sur l'expiration du token d'accès
+                    // Lors de l'expiration, si l'application est toujours active, une fonction 
+                    // refresh sera utilisée pour mettre à jour les informations de connexion.
+                    this.startAuthTimer();
+
                     resolve(user);
                 })
-                .catch((resp) => {
-                    reject(resp);
+                .catch((error) => {
+                    let message;
+                    if(error.response) {
+                        message = this.catchError(error.response, {
+                            mode: 'message'
+                        });
+                    }
+                    else {
+                        message = error;
+                    }
+                    reject(message);
                 });
             });
         })
@@ -480,6 +496,7 @@ export default class App {
         if (found) {
             this.active_structure_id = id;
             this.ax.defaults.headers.common['Structure'] = this.active_structure_id;
+            this.dispatchEvent('structureChanged', found);
         }
 
         else {
@@ -513,5 +530,97 @@ export default class App {
      */
     clearTmpElement(vm) {
         vm.$store.commit('tmpElement', null);
+    }
+
+    /**
+     * Vide les informations d'authentification :
+     * - Les headers HTTP
+     * - Les éléments temporaires stockés
+     */
+    clearAuth() {
+
+        this.dispatchEvent('beforeClearAuth');
+
+        this.ax.defaults.headers.common['Structure'] = 0;
+        this.ax.defaults.headers.common['Authorization'] = '';
+        this.active_structure_id = null;
+        this.local_user = null;
+
+        this.dispatchEvent('authCleared');
+    }
+
+    /**
+     * Ajoute un observeur d'événement sur les actions générales de l'application
+     * @param {String} event L'événement à observer
+     * @param {Function} fn La fonction de callback
+     */
+    addEventListener(event, fn) {
+        if (typeof this.events[event] === 'undefined') {
+            this.events[event] = [];
+        }
+
+        this.events[event].push(fn);
+    }
+
+    /**
+     * Exécute les fonctions de callback liées à un événement
+     * @param {String} event Événement à exécuter
+     * @param {Mixed} payload Informations communiquées par l'événement
+     */
+    dispatchEvent(event, payload) {
+        if (typeof this.events[event] === 'object') {
+            this.events[event].forEach(fn => fn(payload));
+        }
+    }
+
+    /**
+     * Lancer un timer qui permettra de récupérer un nouveau token d'accès depuis le refresh token lorsque 
+     * la session aura expirée. Le rafraichissement est lancé 20 secondes avant l'expiration du token en cours.
+     */
+    startAuthTimer() {
+        let exp = new Date(this.local_user.token.exp * 1000);
+        let diff = exp.getTime() - Date.now() - 20000;
+
+        this.refreshAuthTimer = setTimeout(() => {
+            this.authToApi()
+            .then(user => {
+                this.dispatchEvent('authRefreshed', user);
+            })
+            .catch(this.catchError);
+        }, diff);
+    }
+
+    /**
+     * Ferme la session firebase et vide l'authentification
+     */
+    logout() {
+        let auth = getAuth();
+        signOut(auth);
+        this.dispatchEvent('logout');
+    }
+
+    /**
+     * Lance les processus de contrôle de l'authentification
+     */
+    checkAuth() {
+        let auth = getAuth();
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                this.firebase_user = user;
+                this.authToApi()
+                .catch((error) => {
+                    let message = this.catchError(error, {
+                        mode: 'message'
+                    });
+                    this.dispatchEvent('authError', message);
+                });
+            }
+            else {
+                this.clearAuth();
+            }
+
+            this.dispatchEvent('authInited', user);
+        });
     }
 }
