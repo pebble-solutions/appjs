@@ -1,7 +1,7 @@
 import axios from "axios";
 import * as bootstrap from "bootstrap";
 import { initializeApp } from "firebase/app";
-import { getAuth, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, getIdToken } from "firebase/auth";
+import { getAuth, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, getIdToken, setPersistence, browserSessionPersistence } from "firebase/auth";
 import { StructureUnavailableError, AuthProviderUnreferencedError } from "./errors";
 
 
@@ -287,7 +287,10 @@ export default class App {
             throw Error(error);
         }
 
-        return signInWithEmailAndPassword(auth, login, password)
+        return setPersistence(auth, browserSessionPersistence)
+        .then(() => {
+            return signInWithEmailAndPassword(auth, login, password);
+        })
         .then((userCredential) => {
             const user = userCredential.user;
             this.firebase_user = user;
@@ -342,7 +345,7 @@ export default class App {
      * @returns {Promise}
      */
     apiGet(apiUrl, params) {
-        let auth = getAuth();
+        let auth = getAuth(this.firebaseApp);
 
         return getIdToken(auth.currentUser)
         .then(() => {
@@ -379,7 +382,7 @@ export default class App {
      * @returns {Promise}
      */
     apiPost(apiUrl, params) {
-        let auth = getAuth();
+        let auth = getAuth(this.firebaseApp);
 
         return getIdToken(auth.currentUser)
         .then(() => {
@@ -421,10 +424,13 @@ export default class App {
      * @returns {Promise} Si la promesse est résolut, retourne un objet contenant un token, le login 
      * et les structures attachées
      */
-    authToApi() {
-        let auth = getAuth();
+    authToApi(user) {
 
-        return getIdToken(auth.currentUser)
+        if (!this.firebase_user) {
+            this.firebase_user = user;
+        }
+        
+        return getIdToken(user)
         .then((idtk) => {
             return new Promise((resolve, reject) => {
                 let data = new FormData();
