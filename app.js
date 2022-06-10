@@ -425,7 +425,9 @@ export default class App {
      * @returns {Promise} Si la promesse est résolut, retourne un objet contenant un token, le login 
      * et les structures attachées
      */
-    authToApi(user) {
+    authToApi() {
+
+        let auth = getAuth();
 
         this.dispatchEvent('auth');
 
