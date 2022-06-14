@@ -346,27 +346,19 @@ export default class App {
      * @returns {Promise}
      */
     apiGet(apiUrl, params) {
-        let auth = getAuth(this.firebaseApp);
+        params = typeof params === 'undefined' ? {} : params;
 
-        return getIdToken(auth.currentUser)
-        .then(() => {
-            params = typeof params === 'undefined' ? {} : params;
-
-            return this.ax.get(apiUrl, {
-                params
-            })
-            .then((resp) => {
-                if (resp.data.status === 'OK') {
-                    return resp.data.data;
-                }
-                else {
-                    console.error(resp);
-                    throw new Error(`Erreur dans l'échange avec l'API : ${resp.data.message}`);
-                }
-            })
-            .catch((error) => {
-                throw Error(error);
-            });
+        return this.ax.get(apiUrl, {
+            params
+        })
+        .then((resp) => {
+            if (resp.data.status === 'OK') {
+                return resp.data.data;
+            }
+            else {
+                console.error(resp);
+                throw new Error(`Erreur dans l'échange avec l'API : ${resp.data.message}`);
+            }
         })
         .catch((error) => {
             throw Error(error);
@@ -383,31 +375,23 @@ export default class App {
      * @returns {Promise}
      */
     apiPost(apiUrl, params) {
-        let auth = getAuth(this.firebaseApp);
+        let data = new FormData();
+        for (let key in params) {
+            data.append(key, params[key]);
+        }
 
-        return getIdToken(auth.currentUser)
-        .then(() => {
-            let data = new FormData();
-            for (let key in params) {
-                data.append(key, params[key]);
+        return this.ax.post(apiUrl, data).then((resp) => {
+            if (resp.data.status === 'OK') {
+                return resp.data.data;
             }
-
-            return this.ax.post(apiUrl, data).then((resp) => {
-                if (resp.data.status === 'OK') {
-                    return resp.data.data;
-                }
-                else {
-                    console.error(resp);
-                    throw new Error(`Erreur dans l'échange avec l'API : ${resp.data.message}`);
-                }
-            })
-            .catch((error) => {
-                throw Error(error);
-            });
+            else {
+                console.error(resp);
+                throw new Error(`Erreur dans l'échange avec l'API : ${resp.data.message}`);
+            }
         })
         .catch((error) => {
-            throw Error (error);
-        })
+            throw Error(error);
+        });
     }
 
 
