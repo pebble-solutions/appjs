@@ -357,7 +357,7 @@ export default class App {
             }
             else {
                 console.error(resp);
-                throw new Error(`Erreur dans l'échange avec l'API : ${resp.data.message}`);
+                throw new Error(resp.data.message);
             }
         })
         .catch((error) => {
@@ -386,7 +386,7 @@ export default class App {
             }
             else {
                 console.error(resp);
-                throw new Error(`Erreur dans l'échange avec l'API : ${resp.data.message}`);
+                throw new Error(resp.data.message);
             }
         })
         .catch((error) => {
