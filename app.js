@@ -1,8 +1,10 @@
 import axios from "axios";
 import * as bootstrap from "bootstrap";
 import { initializeApp } from "firebase/app";
+import { collection, getDocs, getFirestore, query, where } from "firebase/firestore";
 import { getAuth, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, getIdToken, signOut, onAuthStateChanged } from "firebase/auth";
-import { StructureUnavailableError, AuthProviderUnreferencedError } from "./errors";
+import { StructureUnavailableError, AuthProviderUnreferencedError, LicenceNotFoundError, LicenceServerUndefinedError } from "./errors";
+import Licence from "./licence";
 
 
 /**
@@ -44,12 +46,16 @@ export default class App {
         this.local_user = null;
         this.active_structure_id = null;
         this.refreshAuthTimer = null;
+        this.env = cfg.env;
+        this.firebaseConfig = cfg.firebaseConfig;
+        this.app_key = null;
+        this.domains = cfg.domains;
+        this.licences = null;
+        this.licence = null;
 
-        this.ax = axios.create({
-            baseURL: this.api.baseURL
-        });
-
-        this.firebaseApp = initializeApp(cfg.firebaseConfig);
+        this.initializeAppKey();
+        this.initializeAxios();
+        this.initializeFirebase();
 
         this.events = cfg.events;
 
@@ -67,6 +73,50 @@ export default class App {
             this.datetime_fields = ['dc', 'dm'];
         }
 
+    }
+
+    initializeAppKey() {
+        if (this.env in this.domains) {
+            this.app_key = this.name+'@'+this.domains[this.env];
+        }
+    }
+
+    /**
+     * On initialise une application firebase en fonction des informations stockées dans le fichier de configuration.
+     * Le fichier de configuration détient une clé "firebaseConfig" qui peut contenir :
+     * - Soit la configuration directe de firebase
+     * - Soit plusieurs clés ("prod", "dev") qui contiennent des configurations firebase. La configuration chargée
+     *   dépend de la valeur de cfg.env qui doit correspondre à l'une de ces clés
+     */
+    initializeFirebase() {
+        if (this.firebaseConfig) {
+
+            let firebaseCfg;
+
+            // Injection directe
+            if (this.firebaseConfig.apiKey) {
+                firebaseCfg = this.firebaseConfig;
+            }
+            // Injection via la variable d'environnement
+            if (this.env in this.firebaseConfig) {
+                firebaseCfg = this.firebaseConfig[this.env];
+            }
+
+            this.firebaseApp = initializeApp(firebaseCfg);
+        }
+    }
+
+    /**
+     * Création de l'instance axios avec l'assignation de l'URL de l'API en header.
+     */
+    initializeAxios() {
+        if (!this.ax) {
+            this.ax = axios.create();
+        }
+
+        if (this.api.baseURL !== this.ax.defaults.baseURL) {
+            this.ax.defaults.baseURL = this.api.baseURL;
+        }
     }
 
     /**
@@ -287,7 +337,8 @@ export default class App {
     }
 
     /**
-     * Ouvre une session avec l'API via un access token
+     * Ouvre une session avec l'API via un access token.
+     * 
      * @param {Object} vm Instance VueJS
      * @param {String} login Nom d'utilisateur
      * @param {String} password Mot de passe
@@ -304,10 +355,7 @@ export default class App {
             throw Error(error);
         }
 
-        return signInWithEmailAndPassword(auth, login, password)
-        .catch((error) => {
-            throw Error(error);
-        });
+        return signInWithEmailAndPassword(auth, login, password);
     }
 
     
@@ -325,10 +373,7 @@ export default class App {
 
             const provider = new GoogleAuthProvider();
 
-            return signInWithPopup(auth, provider)
-            .catch((error) => {
-                throw Error(error);
-            });
+            return signInWithPopup(auth, provider);
         }
 
         else {
@@ -406,69 +451,134 @@ export default class App {
      * - Dans le cas contraire, c'est la première structure du tableau des structures qui sert de structure par défaut
      * Le token d'accès et la structure sont stockés dans le header de toutes les futures requêtes.
      * 
+     * Les informations sont stockées dans le sessionStorage. Une fois dans le sessionStorage, l'authentification 
+     * est demandée à l'API uniquement en cas d'expiration du token.
+     * 
      * @returns {Promise} Si la promesse est résolut, retourne un objet contenant un token, le login 
      * et les structures attachées
      */
     authToApi() {
 
-        let auth = getAuth();
-
         this.dispatchEvent('auth');
+
+        let local_user = sessionStorage.getItem('local_user');
+
+        return new Promise((resolve, reject) => {
+            /* local_user trouvé dans le localStorage
+             */
+            if (local_user) {
+                local_user = JSON.parse(local_user);
+                
+                let exp = new Date(local_user.token.exp * 1000);
+                let diff = exp.getTime() - Date.now() - 20000;
+    
+                // Le token a expiré ou est sur le point d'expirer
+                if (diff <= 0) {
+                    this.refreshAuthToApi()
+                    .then((user) => {
+                        // Un fois connecté, on lance un timer sur l'expiration du token d'accès
+                        // Lors de l'expiration, si l'application est toujours active, une fonction 
+                        // refresh sera utilisée pour mettre à jour les informations de connexion.
+                        this.startAuthTimer();
+                        resolve(user);
+                    })
+                    .catch(error => {
+                        reject(error);
+                    });
+                }
+                // Le token est encore valable
+                else {
+                    this.initializeLocalUser(local_user);
+                    this.startAuthTimer();
+                    resolve(local_user);
+                }
+            }
+            
+            // Aucune information n'a été trouvé dans le localStorage, création de la session
+            else {
+                this.refreshAuthToApi()
+                .then((user) => {
+                    this.startAuthTimer();
+                    resolve(user);
+                })
+                .catch(error => {
+                    reject(error);
+                });
+            }
+        })
+    }
+
+
+    /**
+     * Authentifie l'utilisateur auprès de l'API afin de récupérer un nouveau token d'accès et un utilisateur
+     * (local_user).
+     * 
+     * @returns {Promise} Si la promesse est résolut, elle retourne un objet local_user contenant un token, le login
+     * et les structures associées.
+     */
+    async refreshAuthToApi() {
+
+        let auth = getAuth();
 
         return getIdToken(auth.currentUser)
         .then((idtk) => {
-            return new Promise((resolve, reject) => {
-                let data = new FormData();
-                data.append('idToken', idtk);
+            let data = new FormData();
+            data.append('idToken', idtk);
 
-                this.ax.post('/auth?firebase=1', data)
-                .then((resp) => {
-                    let user = resp.data.data;
+            return this.ax.post('/auth?firebase=1', data)
+            .then((resp) => {
 
-                    // Structure active à la connexion
-                    // - primary_structure (par défaut)
-                    // - la première structure renvoyé le cas échéant
-                    this.active_structure_id = user.login.primary_structure;
-                    if (!this.active_structure_id && user.structures.length) {
-                        this.active_structure_id = user.structures[0].id;
-                    }
-                    
-                    if (!this.active_structure_id) {
-                        console.warn("Aucune structure active. L'API risque de ne retourner aucune valeur.");
-                    }
+                let user = resp.data.data;
+                this.initializeLocalUser(user);
+                return user;
 
-                    this.local_user = user;
-
-                    this.ax.defaults.headers.common['Authorization'] = user.token.jwt;
-                    this.ax.defaults.headers.common['Structure'] = this.active_structure_id;
-
-                    this.dispatchEvent('authChanged', user);
-                    this.dispatchEvent('structureChanged', this.active_structure_id);
-
-                    // Un fois connecté, on lance un timer sur l'expiration du token d'accès
-                    // Lors de l'expiration, si l'application est toujours active, une fonction 
-                    // refresh sera utilisée pour mettre à jour les informations de connexion.
-                    this.startAuthTimer();
-
-                    resolve(user);
-                })
-                .catch((error) => {
-                    let message;
-                    if(error.response) {
-                        message = this.catchError(error.response, {
-                            mode: 'message'
-                        });
-                    }
-                    else {
-                        message = error;
-                    }
-                    reject(message);
-                });
+            })
+            .catch(error => {
+                let message;
+                if(error.response) {
+                    message = this.catchError(error.response, {
+                        mode: 'message'
+                    });
+                }
+                else {
+                    message = error;
+                }
+                
+                this.dispatchEvent('authError', message);
+                throw new Error(message);
             });
-        })
-        .catch((error) => {
-            throw Error(error);
         });
+    }
+
+    /**
+     * Injecte les données du local_user au niveau de l'application et ajoute les headers permettant 
+     * l'authentification au serveur API sur la configuration Axios.
+     * 
+     * @param {Object} user 
+     */
+    initializeLocalUser(user) {
+
+        sessionStorage.setItem('local_user', JSON.stringify(user));
+
+        // Structure active à la connexion
+        // - primary_structure (par défaut)
+        // - la première structure renvoyé le cas échéant
+        this.active_structure_id = user.login.primary_structure;
+        if (!this.active_structure_id && user.structures.length) {
+            this.active_structure_id = user.structures[0].id;
+        }
+        
+        if (!this.active_structure_id) {
+            console.warn("Aucune structure active. L'API risque de ne retourner aucune valeur.");
+        }
+        
+        this.local_user = user;
+
+        this.ax.defaults.headers.common['Authorization'] = user.token.jwt;
+        this.ax.defaults.headers.common['Structure'] = this.active_structure_id;
+
+        this.dispatchEvent('authChanged', user);
+        this.dispatchEvent('structureChanged', this.active_structure_id);
     }
 
     /**
@@ -531,6 +641,10 @@ export default class App {
         this.ax.defaults.headers.common['Authorization'] = '';
         this.active_structure_id = null;
         this.local_user = null;
+        this.licence = null;
+
+        sessionStorage.removeItem('licence');
+        sessionStorage.removeItem('local_user');
 
         this.dispatchEvent('authCleared');
     }
@@ -586,27 +700,142 @@ export default class App {
     }
 
     /**
-     * Lance les processus de contrôle de l'authentification
+     * Lance les processus de contrôle de l'authentification.
+     * Étape du contrôle de l'authentification :
+     * 1. Récupération de l'utilisateur actif
+     * 2. Si utilisateur actif, récupération des licences
+     *              - depuis le sessionStorage si elle existe en session
+     *              - depuis le serveur firestore dans le cas contraire
+     * 3. Si une seule licence, connexion à l'API, si plusieurs licences, demande de la licence à connecter
+     * 4. La licence utilisée est stockée dans le sessionStorage
+     * 
+     * @emit licencesRetrieved {Array} licences
+     * @emit authInited {Object} user
+     * @emit authError {String} message
      */
     checkAuth() {
         let auth = getAuth();
 
         onAuthStateChanged(auth, (user) => {
             if (user) {
+                this.dispatchEvent('authInitializing', user);
+
                 this.firebase_user = user;
-                this.authToApi()
-                .catch((error) => {
-                    let message = this.catchError(error, {
-                        mode: 'message'
-                    });
-                    this.dispatchEvent('authError', message);
+                this.autoSelectLicences()
+                .then((licences) => {
+                    if (licences.length <= 0) {
+                        throw new LicenceNotFoundError();
+                    }
+                    else if (licences.length === 1) {
+                        return this.toggleLicence(licences[0]);
+                    }
+                    else {
+                        this.dispatchEvent('licencesRetrieved', licences);
+                    }
+                })
+                .then(() => {
+                    this.dispatchEvent('authInited', user);
                 });
             }
             else {
                 this.clearAuth();
+                this.dispatchEvent('authInited', user);
             }
-
-            this.dispatchEvent('authInited', user);
         });
+    }
+
+
+    /**
+     * Récupère les licences,
+     * - soit depuis le sessionStorage
+     * - soit depuis la base de données fireStore
+     * @returns {Promise} la valeur retournée est un tableau de licences ou null
+     */
+    autoSelectLicences() {
+        return new Promise((resolve) => {
+            let licence = sessionStorage.getItem('licence');
+
+            if (licence) {
+                licence = JSON.parse(licence);
+                resolve([licence]);
+            }
+            else {
+                this.getLicences()
+                .then((licences) => {
+                    resolve(licences);
+                })
+            }
+        });
+    }
+
+    /**
+     * Récupère la liste des licences de l'utilisateur actif
+     * - soit depuis les éléments pré chargées de l'application
+     * - soit depuis firestore
+     * 
+     * @returns {Promise}
+     */
+    getLicences() {
+        return new Promise((resolve) => {
+            if (this.licences) {
+                resolve(this.licences);
+            }
+            else {
+                const db = getFirestore(this.firebaseApp);
+                const licencesCollection = collection(db, 'Licence');
+                const q = query(licencesCollection, where("users", "array-contains", this.firebase_user.uid));
+
+                let licences = [];
+
+                getDocs(q)
+                .then(licencesSnapshot => {
+                    licencesSnapshot.forEach(licence => {
+
+                        let data = licence.data();
+                        if (!data.apps) data.apps = [];
+
+                        if (data.apps.includes(this.app_key)) {
+                            data._id = licence.id;
+                            licences.push(new Licence(data));
+                        }
+                    });
+
+                    this.licences = licences;
+
+                    resolve(this.licences);
+                });
+            }
+        })
+    }
+
+    /**
+     * Change la licence active. Réinitialise axios sur la nouvelle URL.
+     * 
+     * @param {Object} licence      La nouvelle licence à charger
+     * 
+     * @emit beforeLicenceChange {Object} licence
+     * @emit licenceChanged {Object} licence
+     * 
+     * @returns {Promise}
+     */
+    toggleLicence(licence) {
+        if (!licence.db) {
+            throw new LicenceServerUndefinedError(licence);
+        }
+
+        this.dispatchEvent('beforeLicenceChange', licence);
+
+        sessionStorage.setItem('licence', JSON.stringify(licence));
+        this.licence = new Licence(licence);
+
+        let baseURL = 'http';
+        baseURL += licence.tls ? 's' : '';
+        baseURL += '://'+licence.db+'/api/';
+
+        this.api.baseURL = baseURL;
+        this.initializeAxios();
+        this.dispatchEvent('licenceChanged', this.licence);
+
+        return this.authToApi();
     }
 }
