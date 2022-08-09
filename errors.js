@@ -5,7 +5,7 @@
 export function StructureUnavailableError(structureId) {
     this.name = 'StructureUnavailableError';
     this.structureId = structureId;
-    this.message = "La structure demandée n'est pas chargée. Il est possible que vous ne disposiez pas des droits suffisants.";
+    this.message = `La structure demandée (${structureId}) n'est pas chargée. Il est possible que vous ne disposiez pas des droits suffisants.`;
 }
 
 
