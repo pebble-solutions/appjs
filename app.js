@@ -735,7 +735,8 @@ export default class App {
                 })
                 .then(() => {
                     this.dispatchEvent('authInited', user);
-                });
+                })
+                .catch(e => this.dispatchEvent('authError', e.message));
             }
             else {
                 this.clearAuth();
