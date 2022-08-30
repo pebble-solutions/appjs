@@ -2,7 +2,7 @@ import axios from "axios";
 import * as bootstrap from "bootstrap";
 import { initializeApp } from "firebase/app";
 import { collection, getDocs, getFirestore, query, where } from "firebase/firestore";
-import { getAuth, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, getIdToken, signOut, onAuthStateChanged } from "firebase/auth";
+import { getAuth, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, getIdToken, signOut, onAuthStateChanged, OAuthProvider } from "firebase/auth";
 import { StructureUnavailableError, AuthProviderUnreferencedError, LicenceNotFoundError, LicenceServerUndefinedError } from "./errors";
 import Licence from "./licence";
 
@@ -372,6 +372,12 @@ export default class App {
         if (authProvider === 'google') {
 
             const provider = new GoogleAuthProvider();
+
+            return signInWithPopup(auth, provider);
+        }
+
+        else if (authProvider === 'microsoft') {
+            const provider = new OAuthProvider('microsoft.com');
 
             return signInWithPopup(auth, provider);
         }
