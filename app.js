@@ -378,6 +378,13 @@ export default class App {
 
         else if (authProvider === 'microsoft') {
             const provider = new OAuthProvider('microsoft.com');
+            provider.setCustomParameters({
+                // Optional "tenant" parameter in case you are using an Azure AD tenant.
+                // eg. '8eaef023-2b34-4da1-9baa-8bc8c9d6a490' or 'contoso.onmicrosoft.com'
+                // or "common" for tenant-independent tokens.
+                // The default value is "common".
+                tenant: '714e739c-a0f1-4eca-922c-cfeaedb0cc47'
+            });
 
             return signInWithPopup(auth, provider);
         }
