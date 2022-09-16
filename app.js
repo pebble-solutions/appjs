@@ -52,6 +52,7 @@ export default class App {
         this.domains = cfg.domains;
         this.licences = null;
         this.licence = null;
+        this.authInited = false;
 
         this.initializeAppKey();
         this.initializeAxios();
@@ -630,12 +631,23 @@ export default class App {
 
     /**
      * Vide les informations d'authentification :
-     * - Les headers HTTP
-     * - Les éléments temporaires stockés
+     * - Les informations de licence
+     * - Les informations sur l'utilisateur firebase
      */
     clearAuth() {
-
         this.dispatchEvent('beforeClearAuth');
+        this.clearLicence();
+        this.firebase_user = null;
+        this.dispatchEvent('authCleared');
+    }
+
+    /**
+     * Vide les informations sur la licence en cours d'utilisation
+     * - Les headers HTTP
+     * - Les éléments temporairement stockés en session
+     */
+    clearLicence() {
+        this.dispatchEvent('beforeClearLicence');
 
         this.ax.defaults.headers.common['Structure'] = 0;
         this.ax.defaults.headers.common['Authorization'] = '';
@@ -646,7 +658,7 @@ export default class App {
         sessionStorage.removeItem('licence');
         sessionStorage.removeItem('local_user');
 
-        this.dispatchEvent('authCleared');
+        this.dispatchEvent('licenceCleared');
     }
 
     /**
@@ -692,11 +704,14 @@ export default class App {
 
     /**
      * Ferme la session firebase et vide l'authentification
+     * @return {Promise}
      */
     logout() {
         let auth = getAuth();
-        signOut(auth);
-        this.dispatchEvent('logout');
+        return signOut(auth)
+        .then(() => {
+            this.dispatchEvent('logout');
+        });
     }
 
     /**
@@ -718,7 +733,7 @@ export default class App {
 
         onAuthStateChanged(auth, (user) => {
             if (user) {
-                this.dispatchEvent('authInitializing', user);
+                if (!this.authInited) this.dispatchEvent('authInitializing', user);
 
                 this.firebase_user = user;
                 this.autoSelectLicences()
@@ -733,14 +748,16 @@ export default class App {
                         this.dispatchEvent('licencesRetrieved', licences);
                     }
                 })
-                .then(() => {
-                    this.dispatchEvent('authInited', user);
-                })
-                .catch(e => this.dispatchEvent('authError', e.message));
+                .catch(e => this.dispatchEvent('authError', e.message))
+                .finally(() => {
+                    if (!this.authInited)  this.dispatchEvent('authInited', user);
+                    this.authInited = true;
+                });
             }
             else {
                 this.clearAuth();
-                this.dispatchEvent('authInited', user);
+                if (!this.authInited)  this.dispatchEvent('authInited', user);
+                this.authInited = true;
             }
         });
     }
