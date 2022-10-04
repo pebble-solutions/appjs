@@ -699,6 +699,14 @@ export default class App {
     }
 
     /**
+     * Vide la liste des fonctions liées à un événement.
+     * @param {String} event Événement à vider
+     */
+    clearEventListener(event) {
+        this.events[event] = [];
+    }
+
+    /**
      * Lancer un timer qui permettra de récupérer un nouveau token d'accès depuis le refresh token lorsque 
      * la session aura expirée. Le rafraichissement est lancé 20 secondes avant l'expiration du token en cours.
      */
