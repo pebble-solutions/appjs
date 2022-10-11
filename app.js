@@ -378,6 +378,7 @@ export default class App {
 
         else if (authProvider === 'microsoft') {
             const provider = new OAuthProvider('microsoft.com');
+
             provider.setCustomParameters({
                 // Optional "tenant" parameter in case you are using an Azure AD tenant.
                 // eg. '8eaef023-2b34-4da1-9baa-8bc8c9d6a490' or 'contoso.onmicrosoft.com'
