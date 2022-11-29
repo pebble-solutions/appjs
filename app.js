@@ -5,6 +5,7 @@ import { collection, getDocs, getFirestore, query, where } from "firebase/firest
 import { getAuth, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, getIdToken, signOut, onAuthStateChanged, OAuthProvider } from "firebase/auth";
 import { StructureUnavailableError, AuthProviderUnreferencedError, LicenceNotFoundError, LicenceServerUndefinedError } from "./errors";
 import Licence from "./licence";
+import PasIdToken from "./pasIdToken";
 
 
 /**
@@ -53,10 +54,12 @@ export default class App {
         this.licences = null;
         this.licence = null;
         this.authInited = false;
+        this.pas = null;
 
         this.initializeAppKey();
         this.initializeAxios();
         this.initializeFirebase();
+        this.initializePas();
 
         this.events = cfg.events;
 
@@ -117,6 +120,20 @@ export default class App {
 
         if (this.api.baseURL !== this.ax.defaults.baseURL) {
             this.ax.defaults.baseURL = this.api.baseURL;
+        }
+    }
+
+    /**
+     * Hydratation des informations concernant l'accès au Pebble Authenticator Server (PAS)
+     */
+    initializePas() {
+        let api = this.api[this.env];
+        if (api) {
+            this.pas = api.pas;
+
+            for (const key in api) {
+                this.api[key] = api[key];
+            }
         }
     }
 
@@ -349,6 +366,8 @@ export default class App {
     login(vm, login, password) {
 
         let  auth;
+
+        this.clearAuth();
         
         try {
             auth = getAuth(this.firebaseApp);
@@ -533,36 +552,108 @@ export default class App {
      */
     async refreshAuthToApi() {
 
-        let auth = getAuth();
+        // L'authentification passe par Pebble Authencator Server (PAS)
+        // La reconnexion se fait au moyen d'un token PAS. Si celui-ci a expiré, il est regénéré depuis le serveur PAS.
+        // Les droits sont établis via le serveur de licence.
+        if (this.pas) {
 
-        return getIdToken(auth.currentUser)
-        .then((idtk) => {
+            let pasIdToken = new PasIdToken(this.licence.pasIdToken);
+
+            if (!pasIdToken.isValid) {
+
+                let auth = getAuth();
+
+                return getIdToken(auth.currentUser)
+                .then((idtk) => {
+                    const http = this.api.tls ? "https://" : "http://";
+                    const url = http+this.api.authServer+'/licences/'+this.licence.id;
+                    return axios.get(url, {
+                        headers: {
+                            "Authorization": "Bearer "+idtk
+                        }
+                    });
+                })
+                .then(resp => {
+                    this.licence = new Licence(resp.data);
+                    return this.refreshAuthWithPas();
+                })
+                .catch(error => this.authError(error));
+            }
+            else {
+                return this.refreshAuthWithPas().then((user) => { return user}).catch(error => this.authError(error));
+            }
+
+        }
+        
+        // La connexion se fait directement entre Firebase, l'appli et le serveur d'API
+        // Les droits sont gérés directement par le serveur API
+        else {
+            let auth = getAuth();
+    
+            return getIdToken(auth.currentUser)
+            .then((idtk) => {
+                let data = new FormData();
+                data.append('idToken', idtk);
+    
+                return this.ax.post('/auth?firebase=1', data)
+                .then((resp) => {
+                    let user = resp.data.data;
+                    this.initializeLocalUser(user);
+                    return user;
+                })
+                .catch(error => this.authError(error));
+            });
+        }
+    }
+
+    /**
+     * Relance l'authentification au niveau du serveur d'API via un token PAS valide.
+     * 
+     * @returns {Promise}
+     */
+    refreshAuthWithPas() {
+        return new Promise((resolve, reject) => {
+            let baseURL = 'http';
+            baseURL += this.licence.tls ? 's' : '';
+            baseURL += '://'+this.licence.db+'/api/';
+
             let data = new FormData();
-            data.append('idToken', idtk);
 
-            return this.ax.post('/auth?firebase=1', data)
-            .then((resp) => {
-
+            axios.post(baseURL+'auth?_pas', data, {
+                headers: {
+                    "Authorization": "Bearer "+this.licence.pasIdToken
+                }
+            })
+            .then(resp => {
                 let user = resp.data.data;
                 this.initializeLocalUser(user);
-                return user;
-
+                resolve(user);
             })
-            .catch(error => {
-                let message;
-                if(error.response) {
-                    message = this.catchError(error.response, {
-                        mode: 'message'
-                    });
-                }
-                else {
-                    message = error;
-                }
-                
-                this.dispatchEvent('authError', message);
-                throw new Error(message);
-            });
+            .catch(error => reject(error));
         });
+    }
+
+    /**
+     * Traite les erreurs d'authentification :
+     * - Récupère le message
+     * - Envoie un événement authError
+     * - Lève une exception
+     * 
+     * @param {object} error Un objet contenant un message d'erreur ou le message directement
+     */
+    authError(error) {
+        let message;
+        if(error.response) {
+            message = this.catchError(error.response, {
+                mode: 'message'
+            });
+        }
+        else {
+            message = error;
+        }
+        
+        this.dispatchEvent('authError', message);
+        throw new Error(message);
     }
 
     /**
@@ -652,6 +743,7 @@ export default class App {
         this.dispatchEvent('beforeClearAuth');
         this.clearLicence();
         this.firebase_user = null;
+        this.licences = null;
         this.dispatchEvent('authCleared');
     }
 
@@ -772,14 +864,18 @@ export default class App {
                 })
                 .catch(e => this.dispatchEvent('authError', e.message))
                 .finally(() => {
-                    if (!this.authInited)  this.dispatchEvent('authInited', user);
-                    this.authInited = true;
+                    if (!this.authInited) {
+                        this.authInited = true;
+                        this.dispatchEvent('authInited', user);
+                    }
                 });
             }
             else {
                 this.clearAuth();
-                if (!this.authInited)  this.dispatchEvent('authInited', user);
-                this.authInited = true;
+                if (!this.authInited) {
+                    this.authInited = true;
+                    this.dispatchEvent('authInited', user);
+                }
             }
         });
     }
@@ -811,6 +907,7 @@ export default class App {
     /**
      * Récupère la liste des licences de l'utilisateur actif
      * - soit depuis les éléments pré chargées de l'application
+     * - soit depuis Pebble Authenticator Server (PAS)
      * - soit depuis firestore
      * 
      * @returns {Promise}
@@ -821,29 +918,67 @@ export default class App {
                 resolve(this.licences);
             }
             else {
-                const db = getFirestore(this.firebaseApp);
-                const licencesCollection = collection(db, 'Licence');
-                const q = query(licencesCollection, where("users", "array-contains", this.firebase_user.uid));
-
                 let licences = [];
 
-                getDocs(q)
-                .then(licencesSnapshot => {
-                    licencesSnapshot.forEach(licence => {
+                // Pebble Authenticator Server (PAS) délivre les authentifications aux API
+                // Cette fonctionnalité intègre la génération automatisé des utilisateurs sur les serveurs d'API et 
+                // le système de droits géré directement par PAS.
+                if (this.pas) {
 
-                        let data = licence.data();
-                        if (!data.apps) data.apps = [];
+                    let auth = getAuth();
 
-                        if (data.apps.includes(this.app_key)) {
-                            data._id = licence.id;
-                            licences.push(new Licence(data));
-                        }
+                    getIdToken(auth.currentUser)
+                    .then((idtk) => {
+                        let http = this.api.tls ? 'https://' : 'http://';
+                        let url = http+this.api.authServer+'/licences';
+                        this.ax.get(url, {
+                            headers: {
+                                "Authorization" : "Bearer "+idtk
+                            },
+                            params: {
+                                app: this.app_key
+                            }
+                        })
+                        .then(resp => {
+                            let servLicences = resp.data;
+                            servLicences.forEach(licence => {
+                                licence._id = licence.id;
+                                licences.push(new Licence(licence))
+                            })
+
+                            this.licences = licences;
+
+                            resolve(this.licences)
+                        });
                     });
+                }
 
-                    this.licences = licences;
-
-                    resolve(this.licences);
-                });
+                // La connexion a l'API se faire directement entre Firestore, l'application et le serveur d'API
+                // Le système de droit est géré par chaque serveur d'API. Les utilisateurs doivent être générés et liés manuellement
+                // sur les serveurs d'API
+                else {
+                    const db = getFirestore(this.firebaseApp);
+                    const licencesCollection = collection(db, 'Licence');
+                    const q = query(licencesCollection, where("users", "array-contains-any", [this.firebase_user.uid, this.firebase_user.email]));
+    
+                    getDocs(q)
+                    .then(licencesSnapshot => {
+                        licencesSnapshot.forEach(licence => {
+    
+                            let data = licence.data();
+                            if (!data.apps) data.apps = [];
+    
+                            if (data.apps.includes(this.app_key)) {
+                                data._id = licence.id;
+                                licences.push(new Licence(data));
+                            }
+                        });
+    
+                        this.licences = licences;
+    
+                        resolve(this.licences);
+                    });
+                }
             }
         })
     }
@@ -874,6 +1009,7 @@ export default class App {
 
         this.api.baseURL = baseURL;
         this.initializeAxios();
+
         this.dispatchEvent('licenceChanged', this.licence);
 
         return this.authToApi();
