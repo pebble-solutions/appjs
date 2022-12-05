@@ -419,12 +419,15 @@ export default class App {
     /**
      * Envoie une requête en GET à l'API via Axios
      * 
-     * @param {String} apiUrl Url de l'API à appeler
-     * @param {Object} params Liste des paramètres à passer via la méthode get
+     * @param {string} apiUrl Url de l'API à appeler
+     * @param {object} params Liste des paramètres à passer via la méthode get
+     * @param {object} options Options complémentaires
+     * - reauthenticated                Si true, le processus de réauthentification a été déclenché et il
+     *                                  s'aggit du deuxième passage de la requête
      * 
      * @returns {Promise}
      */
-    apiGet(apiUrl, params) {
+    apiGet(apiUrl, params, options) {
         params = typeof params === 'undefined' ? {} : params;
 
         return this.ax.get(apiUrl, {
@@ -440,8 +443,44 @@ export default class App {
             }
         })
         .catch((error) => {
-            throw Error(error);
+            return this.apiRepeatOrThrow(options, error).then(() => {
+                return this.apiGet(apiUrl, params, { reauthenticated : true })
+            }).catch((error) => {
+                throw new Error(error);
+            });
         });
+    }
+
+    /**
+     * En cas d'erreur sur l'API avec une erreur 401, le système tentera de tester à nouveau avec une 
+     * nouvelle authentification
+     * 
+     * @param {object} options 
+     * - reauthenticated               Si la valeur est true, le processus de réauthentification a déjà et fait
+     * @param {object} lastError       Dernière erreur renvoyée par l'API
+     * 
+     * @returns {Promise}
+     */
+    async apiRepeatOrThrow(options, lastError) {
+
+        options = typeof options === 'undefined' ? {} : options;
+
+        if (!options.reauthenticated && lastError?.response?.status === 401) {
+            const resp = await this.ax.get('checkAuth');
+            // L'authentification a expirée, la requête sera relancé après une réauthentifcation complète
+            if (resp.data.status !== 'OK') {
+                return this.reauthenticate().catch(() => {
+                    alert("Votre sessions est expirée, nous avons tenté de vous reconnecter sans succès.");
+                    this.logout();
+                });
+            }
+            else {
+                throw Error(lastError);
+            }
+        }
+        else {
+            throw Error(lastError);
+        }
     }
 
 
@@ -450,10 +489,13 @@ export default class App {
      * 
      * @param {String} apiUrl Url de l'API à appeler
      * @param {Object} params Liste des paramètres à passer via la méthode POST
+     * @param {object} options Options complémentaires
+     * - reauthenticated                Si true, le processus de réauthentification a été déclenché et il
+     *                                  s'aggit du deuxième passage de la requête
      * 
      * @returns {Promise}
      */
-    apiPost(apiUrl, params) {
+    apiPost(apiUrl, params, options) {
         let data = new FormData();
         for (let key in params) {
             data.append(key, params[key]);
@@ -469,7 +511,11 @@ export default class App {
             }
         })
         .catch((error) => {
-            throw Error(error);
+            return this.apiRepeatOrThrow(options, error).then(() => {
+                return this.apiPost(apiUrl, params, { reauthenticated : true })
+            }).catch((error) => {
+                throw new Error(error);
+            });
         });
     }
 
@@ -631,6 +677,15 @@ export default class App {
             })
             .catch(error => reject(error));
         });
+    }
+
+    /**
+     * Réauthentifie l'utilisateur pour relancer de nouvelles requêtes suite à une défaillance de 
+     * la connexion.
+     */
+    reauthenticate() {
+        sessionStorage.removeItem('local_user');
+        return this.authToApi();
     }
 
     /**
