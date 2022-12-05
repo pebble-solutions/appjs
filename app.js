@@ -820,12 +820,10 @@ export default class App {
      * Ferme la session firebase et vide l'authentification
      * @return {Promise}
      */
-    logout() {
+    async logout() {
         let auth = getAuth();
-        return signOut(auth)
-        .then(() => {
-            this.dispatchEvent('logout');
-        });
+        await signOut(auth);
+        this.dispatchEvent('logout');
     }
 
     /**
@@ -859,6 +857,7 @@ export default class App {
                         return this.toggleLicence(licences[0]);
                     }
                     else {
+                        console.log('event sent licencesRetrieved', licences);
                         this.dispatchEvent('licencesRetrieved', licences);
                     }
                 })
