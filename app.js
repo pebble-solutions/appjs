@@ -1,11 +1,11 @@
 import axios from "axios";
 import * as bootstrap from "bootstrap";
 import { initializeApp } from "firebase/app";
-import { collection, getDocs, getFirestore, query, where } from "firebase/firestore";
 import { getAuth, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, getIdToken, signOut, onAuthStateChanged, OAuthProvider } from "firebase/auth";
 import { StructureUnavailableError, AuthProviderUnreferencedError, LicenceNotFoundError, LicenceServerUndefinedError } from "./errors";
-import Licence from "./licence";
-import PasIdToken from "./pasIdToken";
+import {Licence} from "./models/Licence";
+import { ApiController } from "./controllers/ApiController";
+import { PasServer } from "./models/PasServer";
 
 
 /**
@@ -40,7 +40,7 @@ export default class App {
      * - events.list.done(this)                           Une fois une requête de liste passée, quelque soit le code d'erreur
      */
     constructor(cfg) {
-        this.api = cfg.api;
+        this.apiConfig = cfg.api;
         this.name = cfg.name;
         this.cfg = cfg.cfg;
         this.firebase_user = null;
@@ -54,10 +54,9 @@ export default class App {
         this.licences = null;
         this.licence = null;
         this.authInited = false;
-        this.pas = null;
+        this.api = new ApiController();
 
         this.initializeAppKey();
-        this.initializeAxios();
         this.initializeFirebase();
         this.initializePas();
 
@@ -111,30 +110,17 @@ export default class App {
     }
 
     /**
-     * Création de l'instance axios avec l'assignation de l'URL de l'API en header.
-     */
-    initializeAxios() {
-        if (!this.ax) {
-            this.ax = axios.create();
-        }
-
-        if (this.api.baseURL !== this.ax.defaults.baseURL) {
-            this.ax.defaults.baseURL = this.api.baseURL;
-        }
-    }
-
-    /**
      * Hydratation des informations concernant l'accès au Pebble Authenticator Server (PAS)
      */
     initializePas() {
-        let api = this.api[this.env];
+        let api = this.apiConfig[this.env];
         if (api) {
-            this.pas = api.pas;
-
             for (const key in api) {
-                this.api[key] = api[key];
+                this.apiConfig[key] = api[key];
             }
         }
+
+        this.api.auth_server = new PasServer(this.apiConfig);
     }
 
     /**
@@ -174,7 +160,7 @@ export default class App {
 
         vm.pending.elements = true;
 
-        return this.apiGet('/' + this.api.elements + '/GET/list', query)
+        return this.apiGet('/' + this.apiConfig.elements + '/GET/list', query)
         .then((data) => {
             if ('success' in this.events.list) {
                 this.events.list.success(this);
@@ -199,7 +185,7 @@ export default class App {
     loadExtended(vm, element) {
         vm.pending.extended = true;
 
-        return this.apiGet('/' + this.api.elements + '/GET/' + element.id + '?api_hierarchy=1')
+        return this.apiGet('/' + this.apiConfig.elements + '/GET/' + element.id + '?api_hierarchy=1')
         .then((data) => {
             return data;
         })
@@ -222,7 +208,7 @@ export default class App {
 
             let id = vm.$store.state.openedElement.id;
 
-            this.ax.post('/' + this.api.elements + '/DELETE/' + id)
+            this.apiPost('/' + this.apiConfig.elements + '/DELETE/' + id)
                 .then((resp) => {
                     let apiResp = resp.data;
 
@@ -275,7 +261,7 @@ export default class App {
             id = vm.$store.state.openedElement.id;
         }
 
-        return this.apiPost('/' + this.api.elements + '/POST/' + id + '?api_hierarchy=1', query)
+        return this.apiPost('/' + this.apiConfig.elements + '/POST/' + id + '?api_hierarchy=1', query)
         .then((data) => {
             if (options.pending) {
                 self.pending[options.pending] = false;
@@ -419,273 +405,26 @@ export default class App {
     /**
      * Envoie une requête en GET à l'API via Axios
      * 
-     * @param {string} apiUrl Url de l'API à appeler
+     * @param {string} route Url de l'API à appeler
      * @param {object} params Liste des paramètres à passer via la méthode get
-     * @param {object} options Options complémentaires
-     * - reauthenticated                Si true, le processus de réauthentification a été déclenché et il
-     *                                  s'aggit du deuxième passage de la requête
      * 
      * @returns {Promise}
      */
-    apiGet(apiUrl, params, options) {
-        params = typeof params === 'undefined' ? {} : params;
-
-        return this.ax.get(apiUrl, {
-            params
-        })
-        .then((resp) => {
-            if (resp.data.status === 'OK') {
-                return resp.data.data;
-            }
-            else {
-                console.error(resp);
-                throw new Error(resp.data.message);
-            }
-        })
-        .catch((error) => {
-            return this.apiRepeatOrThrow(options, error).then(() => {
-                return this.apiGet(apiUrl, params, { reauthenticated : true })
-            }).catch((error) => {
-                throw new Error(error);
-            });
-        });
-    }
-
-    /**
-     * En cas d'erreur sur l'API avec une erreur 401, le système tentera de tester à nouveau avec une 
-     * nouvelle authentification
-     * 
-     * @param {object} options 
-     * - reauthenticated               Si la valeur est true, le processus de réauthentification a déjà et fait
-     * @param {object} lastError       Dernière erreur renvoyée par l'API
-     * 
-     * @returns {Promise}
-     */
-    async apiRepeatOrThrow(options, lastError) {
-
-        options = typeof options === 'undefined' ? {} : options;
-
-        if (!options.reauthenticated && lastError?.response?.status === 401) {
-            const resp = await this.ax.get('checkAuth');
-            // L'authentification a expirée, la requête sera relancé après une réauthentifcation complète
-            if (resp.data.status !== 'OK') {
-                return this.reauthenticate().catch(() => {
-                    alert("Votre sessions est expirée, nous avons tenté de vous reconnecter sans succès.");
-                    this.logout();
-                });
-            }
-            else {
-                throw Error(lastError);
-            }
-        }
-        else {
-            throw Error(lastError);
-        }
+    apiGet(route, params) {
+        return this.api.get(route, params);
     }
 
 
     /**
      * Envoie une requête en POST à l'API via Axios
      * 
-     * @param {String} apiUrl Url de l'API à appeler
-     * @param {Object} params Liste des paramètres à passer via la méthode POST
-     * @param {object} options Options complémentaires
-     * - reauthenticated                Si true, le processus de réauthentification a été déclenché et il
-     *                                  s'aggit du deuxième passage de la requête
+     * @param {string} route Url de l'API à appeler
+     * @param {object} params Liste des paramètres à passer via la méthode POST
      * 
      * @returns {Promise}
      */
-    apiPost(apiUrl, params, options) {
-        let data = new FormData();
-        for (let key in params) {
-            data.append(key, params[key]);
-        }
-
-        return this.ax.post(apiUrl, data).then((resp) => {
-            if (resp.data.status === 'OK') {
-                return resp.data.data;
-            }
-            else {
-                console.error(resp);
-                throw new Error(resp.data.message);
-            }
-        })
-        .catch((error) => {
-            return this.apiRepeatOrThrow(options, error).then(() => {
-                return this.apiPost(apiUrl, params, { reauthenticated : true })
-            }).catch((error) => {
-                throw new Error(error);
-            });
-        });
-    }
-
-
-    /**
-     * Authentifie l'utilisateur au niveau de l'API. Pour s'authentifier, l'utilisateur devra 
-     * au préalable être authentifié auprès de Firebase. L'idToken de firbase servira de point de 
-     * contrôle. L'authentification à l'API retourne un nouveau token qui servira à suivre les 
-     * futures requêtes.
-     * 
-     * Une fois authentifié auprès de l'API, on vérifie la structure à activer :
-     * - Soit il y a une primary_structure, dans ce cas c'est elle qui sert de structure active à la connexion
-     * - Dans le cas contraire, c'est la première structure du tableau des structures qui sert de structure par défaut
-     * Le token d'accès et la structure sont stockés dans le header de toutes les futures requêtes.
-     * 
-     * Les informations sont stockées dans le sessionStorage. Une fois dans le sessionStorage, l'authentification 
-     * est demandée à l'API uniquement en cas d'expiration du token.
-     * 
-     * @returns {Promise} Si la promesse est résolut, retourne un objet contenant un token, le login 
-     * et les structures attachées
-     */
-    authToApi() {
-
-        this.dispatchEvent('auth');
-
-        let local_user = sessionStorage.getItem('local_user');
-
-        return new Promise((resolve, reject) => {
-            /* local_user trouvé dans le localStorage
-             */
-            if (local_user) {
-                local_user = JSON.parse(local_user);
-                
-                let exp = new Date(local_user.token.exp * 1000);
-                let diff = exp.getTime() - Date.now() - 20000;
-    
-                // Le token a expiré ou est sur le point d'expirer
-                if (diff <= 0) {
-                    this.refreshAuthToApi()
-                    .then((user) => {
-                        // Un fois connecté, on lance un timer sur l'expiration du token d'accès
-                        // Lors de l'expiration, si l'application est toujours active, une fonction 
-                        // refresh sera utilisée pour mettre à jour les informations de connexion.
-                        this.startAuthTimer();
-                        resolve(user);
-                    })
-                    .catch(error => {
-                        reject(error);
-                    });
-                }
-                // Le token est encore valable
-                else {
-                    this.initializeLocalUser(local_user);
-                    this.startAuthTimer();
-                    resolve(local_user);
-                }
-            }
-            
-            // Aucune information n'a été trouvé dans le localStorage, création de la session
-            else {
-                this.refreshAuthToApi()
-                .then((user) => {
-                    this.startAuthTimer();
-                    resolve(user);
-                })
-                .catch(error => {
-                    reject(error);
-                });
-            }
-        })
-    }
-
-
-    /**
-     * Authentifie l'utilisateur auprès de l'API afin de récupérer un nouveau token d'accès et un utilisateur
-     * (local_user).
-     * 
-     * @returns {Promise} Si la promesse est résolut, elle retourne un objet local_user contenant un token, le login
-     * et les structures associées.
-     */
-    async refreshAuthToApi() {
-
-        // L'authentification passe par Pebble Authencator Server (PAS)
-        // La reconnexion se fait au moyen d'un token PAS. Si celui-ci a expiré, il est regénéré depuis le serveur PAS.
-        // Les droits sont établis via le serveur de licence.
-        if (this.pas) {
-
-            let pasIdToken = new PasIdToken(this.licence.pasIdToken);
-
-            if (!pasIdToken.isValid) {
-
-                let auth = getAuth();
-
-                return getIdToken(auth.currentUser)
-                .then((idtk) => {
-                    const http = this.api.tls ? "https://" : "http://";
-                    const url = http+this.api.authServer+'/licences/'+this.licence.id;
-                    return axios.get(url, {
-                        headers: {
-                            "Authorization": "Bearer "+idtk
-                        }
-                    });
-                })
-                .then(resp => {
-                    this.licence = new Licence(resp.data);
-                    return this.refreshAuthWithPas();
-                })
-                .catch(error => this.authError(error));
-            }
-            else {
-                return this.refreshAuthWithPas().then((user) => { return user}).catch(error => this.authError(error));
-            }
-
-        }
-        
-        // La connexion se fait directement entre Firebase, l'appli et le serveur d'API
-        // Les droits sont gérés directement par le serveur API
-        else {
-            let auth = getAuth();
-    
-            return getIdToken(auth.currentUser)
-            .then((idtk) => {
-                let data = new FormData();
-                data.append('idToken', idtk);
-    
-                return this.ax.post('/auth?firebase=1', data)
-                .then((resp) => {
-                    let user = resp.data.data;
-                    this.initializeLocalUser(user);
-                    return user;
-                })
-                .catch(error => this.authError(error));
-            });
-        }
-    }
-
-    /**
-     * Relance l'authentification au niveau du serveur d'API via un token PAS valide.
-     * 
-     * @returns {Promise}
-     */
-    refreshAuthWithPas() {
-        return new Promise((resolve, reject) => {
-            let baseURL = 'http';
-            baseURL += this.licence.tls ? 's' : '';
-            baseURL += '://'+this.licence.db+'/api/';
-
-            let data = new FormData();
-
-            axios.post(baseURL+'auth?_pas', data, {
-                headers: {
-                    "Authorization": "Bearer "+this.licence.pasIdToken
-                }
-            })
-            .then(resp => {
-                let user = resp.data.data;
-                this.initializeLocalUser(user);
-                resolve(user);
-            })
-            .catch(error => reject(error));
-        });
-    }
-
-    /**
-     * Réauthentifie l'utilisateur pour relancer de nouvelles requêtes suite à une défaillance de 
-     * la connexion.
-     */
-    reauthenticate() {
-        sessionStorage.removeItem('local_user');
-        return this.authToApi();
+    apiPost(route, params) {
+        return this.api.post(route, params);
     }
 
     /**
@@ -704,7 +443,7 @@ export default class App {
             });
         }
         else {
-            message = error;
+            message = error.message ?? error;
         }
         
         this.dispatchEvent('authError', message);
@@ -715,12 +454,9 @@ export default class App {
      * Injecte les données du local_user au niveau de l'application et ajoute les headers permettant 
      * l'authentification au serveur API sur la configuration Axios.
      * 
-     * @param {Object} user 
+     * @param {LocalUser} user 
      */
     initializeLocalUser(user) {
-
-        sessionStorage.setItem('local_user', JSON.stringify(user));
-
         // Structure active à la connexion
         // - primary_structure (par défaut)
         // - la première structure renvoyé le cas échéant
@@ -735,8 +471,7 @@ export default class App {
         
         this.local_user = user;
 
-        this.ax.defaults.headers.common['Authorization'] = user.token.jwt;
-        this.ax.defaults.headers.common['Structure'] = this.active_structure_id;
+        this.api.setStructure(this.active_structure_id);
 
         this.dispatchEvent('authChanged', user);
         this.dispatchEvent('structureChanged', this.active_structure_id);
@@ -752,7 +487,7 @@ export default class App {
 
         if (found) {
             this.active_structure_id = id;
-            this.ax.defaults.headers.common['Structure'] = this.active_structure_id;
+            this.api.setStructure(this.active_structure_id);
             this.dispatchEvent('structureChanged', found.id);
         }
 
@@ -810,14 +545,13 @@ export default class App {
     clearLicence() {
         this.dispatchEvent('beforeClearLicence');
 
-        this.ax.defaults.headers.common['Structure'] = 0;
-        this.ax.defaults.headers.common['Authorization'] = '';
+        this.api.clearSession();
+
         this.active_structure_id = null;
         this.local_user = null;
         this.licence = null;
 
         sessionStorage.removeItem('licence');
-        sessionStorage.removeItem('local_user');
 
         this.dispatchEvent('licenceCleared');
     }
@@ -852,23 +586,6 @@ export default class App {
      */
     clearEventListener(event) {
         this.events[event] = [];
-    }
-
-    /**
-     * Lancer un timer qui permettra de récupérer un nouveau token d'accès depuis le refresh token lorsque 
-     * la session aura expirée. Le rafraichissement est lancé 20 secondes avant l'expiration du token en cours.
-     */
-    startAuthTimer() {
-        let exp = new Date(this.local_user.token.exp * 1000);
-        let diff = exp.getTime() - Date.now() - 20000;
-
-        this.refreshAuthTimer = setTimeout(() => {
-            this.authToApi()
-            .then(user => {
-                this.dispatchEvent('authRefreshed', user);
-            })
-            .catch(this.catchError);
-        }, diff);
     }
 
     /**
@@ -912,7 +629,6 @@ export default class App {
                         return this.toggleLicence(licences[0]);
                     }
                     else {
-                        console.log('event sent licencesRetrieved', licences);
                         this.dispatchEvent('licencesRetrieved', licences);
                     }
                 })
@@ -962,7 +678,6 @@ export default class App {
      * Récupère la liste des licences de l'utilisateur actif
      * - soit depuis les éléments pré chargées de l'application
      * - soit depuis Pebble Authenticator Server (PAS)
-     * - soit depuis firestore
      * 
      * @returns {Promise}
      */
@@ -974,65 +689,34 @@ export default class App {
             else {
                 let licences = [];
 
-                // Pebble Authenticator Server (PAS) délivre les authentifications aux API
-                // Cette fonctionnalité intègre la génération automatisé des utilisateurs sur les serveurs d'API et 
-                // le système de droits géré directement par PAS.
-                if (this.pas) {
+                let auth = getAuth();
 
-                    let auth = getAuth();
+                getIdToken(auth.currentUser)
+                .then((idtk) => {
 
-                    getIdToken(auth.currentUser)
-                    .then((idtk) => {
-                        let http = this.api.tls ? 'https://' : 'http://';
-                        let url = http+this.api.authServer+'/licences';
-                        this.ax.get(url, {
-                            headers: {
-                                "Authorization" : "Bearer "+idtk
-                            },
-                            params: {
-                                app: this.app_key
-                            }
+                    let server = new PasServer(this.apiConfig);
+
+                    axios.get('licences', {
+                        headers: {
+                            "Authorization" : "Bearer "+idtk
+                        },
+                        params: {
+                            app: this.app_key
+                        },
+                        baseURL: server.url
+                    })
+                    .then(resp => {
+                        let servLicences = resp.data;
+                        servLicences.forEach(licence => {
+                            licence._id = licence.id;
+                            licences.push(new Licence(licence))
                         })
-                        .then(resp => {
-                            let servLicences = resp.data;
-                            servLicences.forEach(licence => {
-                                licence._id = licence.id;
-                                licences.push(new Licence(licence))
-                            })
 
-                            this.licences = licences;
-
-                            resolve(this.licences)
-                        });
-                    });
-                }
-
-                // La connexion a l'API se faire directement entre Firestore, l'application et le serveur d'API
-                // Le système de droit est géré par chaque serveur d'API. Les utilisateurs doivent être générés et liés manuellement
-                // sur les serveurs d'API
-                else {
-                    const db = getFirestore(this.firebaseApp);
-                    const licencesCollection = collection(db, 'Licence');
-                    const q = query(licencesCollection, where("users", "array-contains-any", [this.firebase_user.uid, this.firebase_user.email]));
-    
-                    getDocs(q)
-                    .then(licencesSnapshot => {
-                        licencesSnapshot.forEach(licence => {
-    
-                            let data = licence.data();
-                            if (!data.apps) data.apps = [];
-    
-                            if (data.apps.includes(this.app_key)) {
-                                data._id = licence.id;
-                                licences.push(new Licence(data));
-                            }
-                        });
-    
                         this.licences = licences;
-    
-                        resolve(this.licences);
+
+                        resolve(this.licences)
                     });
-                }
+                });
             }
         })
     }
@@ -1047,22 +731,26 @@ export default class App {
      * 
      * @returns {Promise}
      */
-    toggleLicence(licence) {
+    async toggleLicence(licence) {
         if (!licence.db) {
             throw new LicenceServerUndefinedError(licence);
         }
 
-        this.dispatchEvent('beforeLicenceChange', licence);
+        let lic = new Licence(licence);
 
-        sessionStorage.setItem('licence', JSON.stringify(licence));
-        this.licence = new Licence(licence);
+        this.dispatchEvent('beforeLicenceChange', lic);
 
-        let baseURL = 'http';
-        baseURL += licence.tls ? 's' : '';
-        baseURL += '://'+licence.db+'/api/';
-
-        this.api.baseURL = baseURL;
-        this.initializeAxios();
+        sessionStorage.setItem('licence', JSON.stringify(lic));
+        this.licence = lic;
+        this.api.licence = this.licence;
+        try {
+            let user = await this.api.auth();
+            this.initializeLocalUser(user);
+        }
+        catch (error) {
+            console.dir(error);
+            this.authError(error);
+        }
 
         this.dispatchEvent('licenceChanged', this.licence);
 

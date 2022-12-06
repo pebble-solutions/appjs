@@ -39,7 +39,7 @@ export default class PasIdToken {
      * @return {boolean}
      */
     get isValid() {
-        return this.exp < Date.now() / 1000 ? true : false;
+        return this.exp >= Date.now() / 1000 ? true : false;
     }
 
 }
