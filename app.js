@@ -756,6 +756,6 @@ export default class App {
 
         this.dispatchEvent('licenceChanged', this.licence);
 
-        return this.authToApi();
+        return this.local_user;
     }
 }
