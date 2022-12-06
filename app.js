@@ -407,11 +407,12 @@ export default class App {
      * 
      * @param {string} route Url de l'API à appeler
      * @param {object} params Liste des paramètres à passer via la méthode get
+     * @param {object} axiosConfig Voir https://axios-http.com/docs/req_config
      * 
      * @returns {Promise}
      */
-    apiGet(route, params) {
-        return this.api.get(route, params);
+    apiGet(route, params, axiosConfig) {
+        return this.api.get(route, params, axiosConfig);
     }
 
 
@@ -420,11 +421,12 @@ export default class App {
      * 
      * @param {string} route Url de l'API à appeler
      * @param {object} params Liste des paramètres à passer via la méthode POST
+     * @param {object} axiosConfig Voir https://axios-http.com/docs/req_config
      * 
      * @returns {Promise}
      */
-    apiPost(route, params) {
-        return this.api.post(route, params);
+    apiPost(route, params, axiosConfig) {
+        return this.api.post(route, params, axiosConfig);
     }
 
     /**

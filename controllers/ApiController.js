@@ -135,25 +135,27 @@ export class ApiController {
      * 
      * @param {string} route La route de l'API après la baseUrl
      * @param {object} query Les paramètres passés en GET
+     * @param {object} axiosConfig Configuration du framework Axios (https://axios-http.com/docs/req_config)
      * @param {object} options 
      * - reauthenticated {boolean} true lorsque la requête a déjà été rententée
      * 
      * @return {Promise<object>}
      */
-    async get(route, query, options) {
+    async get(route, query, axiosConfig, options) {
 
         options = options ?? {};
 
+        axiosConfig = axiosConfig ?? {};
+        axiosConfig.params = query;
+
         try {
             await this.auth()
-            let resp = await this.ax.get(route, {
-                params: query
-            });
-            return resp.data.data;
+            let resp = await this.ax.get(route, axiosConfig);
+            return 'data' in resp.data ? resp.data.data : resp.data;
         }
         catch (error) {
             await this.tryAgainOrThrow(error, options);
-            return await this.get(route, query, { reauthenticated : true });
+            return await this.get(route, query, axiosConfig, { reauthenticated : true });
         }
 
     }
@@ -163,20 +165,27 @@ export class ApiController {
      * 
      * @param {string} route La route de l'API après baseUrl
      * @param {object} query Les paramètres passés en POST
+     * @param {object} axiosConfig Configuration du framework Axios (https://axios-http.com/docs/req_config)
      * @param {object} options 
      * - reauthenticated {boolean} true lorsque la requête a déjà été rententée
      * 
      * @returns {Promise<object>}
      */
-    async post(route, query, options) {
+    async post(route, query, axiosConfig, options) {
         try {
             await this.auth()
-            let resp = await this.ax.post(route, query);
-            return resp.data.data;
+
+            let data = new FormData();
+            for (let key in query) {
+                data.append(key, query[key]);
+            }
+
+            let resp = await this.ax.post(route, data, axiosConfig);
+            return 'data' in resp.data ? resp.data.data : resp.data;
         }
         catch (error) {
             await this.tryAgainOrThrow(error, options);
-            return await this.post(route, query, { reauthenticated : true });
+            return await this.post(route, query, axiosConfig, { reauthenticated : true });
         }
     }
 
