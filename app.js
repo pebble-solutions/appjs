@@ -307,11 +307,24 @@ export default class App {
 
         let message = "Une erreur est survenue mais le serveur n'a renvoyé aucune information. Les données techniques ont été retournées dans la console.";
 
-        if ('message' in error) {
+        // L'erreur a été produite par axios et contient une réponse
+        if (error?.response?.data) {
+            let d = error.response.data;
+            if (d.message) {
+                message = d.message;
+            }
+            else {
+                message = d;
+            }
+        }
+        // L'erreur est une exception contenant un message
+        else if ('message' in error) {
             message = error.message;
         }
+        // L'erreur contient un statusText HTTP
         else if ('statusText' in error) {
             let apiMessage;
+
             if (error.data) {
                 if (error.data.message) {
                     apiMessage = `${error.data.message} (${error.status} ${error.statusText})`;
@@ -324,6 +337,7 @@ export default class App {
                 message = apiMessage;
             }
         }
+        // L'erreur est directement une chaine de caractères
         else {
             if (typeof error === 'string') {
                 message = error;
