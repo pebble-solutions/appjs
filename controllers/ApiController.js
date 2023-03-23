@@ -131,6 +131,49 @@ export class ApiController {
     }
 
     /**
+     * Envoie une requête à l'API
+     * 
+     * @param {string} route La route de l'API après la baseUrl
+     * @param {string} method La méthode HTTP : GET, POST, PATCH, PUT, DELETE
+     * @param {object} query Les paramètres passés via la méthode
+     * @param {object} axiosConfig Configuration du framework Axios (https://axios-http.com/docs/req_config)
+     * @param {object} options 
+     * - reauthenticated {boolean} true lorsque la requête a déjà été rententée
+     * 
+     * @return {Promise<object>}
+     */
+    async query(route, method, query, axiosConfig, options) {
+        options = options ?? {};
+
+        axiosConfig = axiosConfig ?? {};
+
+        if (['post', 'patch', 'put'].includes(method.toLowerCase())) {
+            let data = new FormData();
+            for (let key in query) {
+                data.append(key, query[key]);
+            }
+
+            axiosConfig.data = data;
+        }
+        else if (method.toLowerCase() === 'get') {
+            axiosConfig.params = query;
+        }
+
+        axiosConfig.method = method.toLowerCase();
+        axiosConfig.url = route;
+
+        try {
+            await this.auth()
+            let resp = await this.ax(axiosConfig);
+            return 'data' in resp.data ? resp.data.data : resp.data;
+        }
+        catch (error) {
+            await this.tryAgainOrThrow(error, options);
+            return await this.query(route, method, query, axiosConfig, { reauthenticated : true });
+        }
+    }
+
+    /**
      * Envoie une requête GET à l'API
      * 
      * @param {string} route La route de l'API après la baseUrl
@@ -143,20 +186,7 @@ export class ApiController {
      */
     async get(route, query, axiosConfig, options) {
 
-        options = options ?? {};
-
-        axiosConfig = axiosConfig ?? {};
-        axiosConfig.params = query;
-
-        try {
-            await this.auth()
-            let resp = await this.ax.get(route, axiosConfig);
-            return 'data' in resp.data ? resp.data.data : resp.data;
-        }
-        catch (error) {
-            await this.tryAgainOrThrow(error, options);
-            return await this.get(route, query, axiosConfig, { reauthenticated : true });
-        }
+        return await this.query(route, 'get', query, axiosConfig, options);
 
     }
 
@@ -172,21 +202,25 @@ export class ApiController {
      * @returns {Promise<object>}
      */
     async post(route, query, axiosConfig, options) {
-        try {
-            await this.auth()
 
-            let data = new FormData();
-            for (let key in query) {
-                data.append(key, query[key]);
-            }
+        return await this.query(route, 'post', query, axiosConfig, options);
 
-            let resp = await this.ax.post(route, data, axiosConfig);
-            return 'data' in resp.data ? resp.data.data : resp.data;
-        }
-        catch (error) {
-            await this.tryAgainOrThrow(error, options);
-            return await this.post(route, query, axiosConfig, { reauthenticated : true });
-        }
+    }
+
+    /**
+     * Envoie une requête DELETE à l'API
+     * 
+     * @param {string} route La route de l'API après baseUrl
+     * @param {object} axiosConfig Configuration du framework Axios (https://axios-http.com/docs/req_config)
+     * @param {object} options 
+     * - reauthenticated {boolean} true lorsque la requête a déjà été rententée
+     * 
+     * @returns {Promise<object>}
+     */
+    async delete(route, axiosConfig, options) {
+
+        return await this.query(route, 'delete', null, axiosConfig, options);
+
     }
 
     /**
