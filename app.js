@@ -453,6 +453,18 @@ export default class App {
     }
 
     /**
+     * Envoie une requête en DELETE à l'API via Axios
+     * 
+     * @param {string} route Url de l'API à appeler
+     * @param {object} axiosConfig Voir https://axios-http.com/docs/req_config
+     * 
+     * @returns {Promise}
+     */
+    apiDelete(route, axiosConfig) {
+        return this.api.delete(route, axiosConfig);
+    }
+
+    /**
      * Traite les erreurs d'authentification :
      * - Récupère le message
      * - Envoie un événement authError
