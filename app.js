@@ -47,19 +47,19 @@ export default class App {
      * - events.list.done(this)                           Une fois une requête de liste passée, quelque soit le code d'erreur
      */
     constructor(cfg) {
-        this.apiConfig = LOCAL_ENV.api ?? cfg.api;
-        this.name = LOCAL_ENV.name ?? cfg.name;
-        this.cfg = LOCAL_ENV.cfg ?? cfg.cfg;
+        this.apiConfig = LOCAL_ENV?.api ?? cfg.api;
+        this.name = LOCAL_ENV?.name ?? cfg.name;
+        this.cfg = LOCAL_ENV?.cfg ?? cfg.cfg;
         this.firebase_user = null;
         this.local_user = null;
         this.active_structure_id = null;
         this.refreshAuthTimer = null;
 
-        this.env = LOCAL_ENV.env ?? cfg.env;
+        this.env = LOCAL_ENV?.env ?? cfg.env;
 
-        this.firebaseConfig = LOCAL_ENV.firebaseConfig ?? cfg.firebaseConfig;
+        this.firebaseConfig = LOCAL_ENV?.firebaseConfig ?? cfg.firebaseConfig;
         this.app_key = null;
-        this.domains = LOCAL_ENV.domains ?? cfg.domains;
+        this.domains = LOCAL_ENV?.domains ?? cfg.domains;
         this.licences = null;
         this.licence = null;
         this.authInited = false;
@@ -69,7 +69,7 @@ export default class App {
         this.initializeFirebase();
         this.initializePas();
 
-        this.events = LOCAL_ENV.events ?? cfg.events;
+        this.events = LOCAL_ENV?.events ?? cfg.events;
 
         if (typeof this.events === 'undefined') {
             this.events = {};
