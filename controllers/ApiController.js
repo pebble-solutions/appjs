@@ -148,9 +148,17 @@ export class ApiController {
         axiosConfig = axiosConfig ?? {};
 
         if (['post', 'patch', 'put'].includes(method.toLowerCase())) {
-            let data = new FormData();
-            for (let key in query) {
-                data.append(key, query[key]);
+
+            let data;
+
+            if (method.toLowerCase() === 'post') {
+                data = new FormData();
+                for (let key in query) {
+                    data.append(key, query[key]);
+                }
+            }
+            else {
+                data = query;
             }
 
             axiosConfig.data = data;
