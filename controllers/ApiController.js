@@ -216,6 +216,40 @@ export class ApiController {
     }
 
     /**
+     * Envoie une requête PATCH à l'API
+     * 
+     * @param {string} route La route de l'API après baseUrl
+     * @param {object} query Les paramètres passés en PATCH
+     * @param {object} axiosConfig Configuration du framework Axios (https://axios-http.com/docs/req_config)
+     * @param {object} options 
+     * - reauthenticated {boolean} true lorsque la requête a déjà été rententée
+     * 
+     * @returns {Promise<object>}
+     */
+    async patch(route, query, axiosConfig, options) {
+
+        return await this.query(route, 'patch', query, axiosConfig, options);
+
+    }
+
+    /**
+     * Envoie une requête PUT à l'API
+     * 
+     * @param {string} route La route de l'API après baseUrl
+     * @param {object} query Les paramètres passés en PUT
+     * @param {object} axiosConfig Configuration du framework Axios (https://axios-http.com/docs/req_config)
+     * @param {object} options 
+     * - reauthenticated {boolean} true lorsque la requête a déjà été rententée
+     * 
+     * @returns {Promise<object>}
+     */
+    async put(route, query, axiosConfig, options) {
+
+        return await this.query(route, 'put', query, axiosConfig, options);
+
+    }
+
+    /**
      * Envoie une requête DELETE à l'API
      * 
      * @param {string} route La route de l'API après baseUrl
