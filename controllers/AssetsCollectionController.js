@@ -188,6 +188,8 @@ export class AssetsCollectionController {
         if (pl.id) {
             let ids = pl.id.split(",");
             pl.id = this.listNotLoadedIds(ids).join(',');
+            
+            if (!pl.id) return;
         }
 
         const data = await this.getFromApi(this.apiRoute, pl);
