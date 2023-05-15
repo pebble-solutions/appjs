@@ -72,11 +72,11 @@ export class AssetsCollectionController {
         options = typeof options === 'undefined' ? {} : options;
 
         return new Promise((resolve) => {
-            const found = this.collection.find(e => e.id == id);
-
             if (!id) {
                 throw new UndefinedIdException();
             }
+
+            const found = this.collection.find(e => e.id == id);
 
             if (found) {
                 this.removeFromNotFound(found.id);
@@ -144,6 +144,39 @@ export class AssetsCollectionController {
     }
 
     /**
+     * Retourne la liste des ID de ressources qui ne sont pas encore chargées depuis l'API
+     * 
+     * @param {array} ids Liste des ID à tester
+     * 
+     * @returns {array}
+     */
+    listNotLoadedIds(ids) {
+        let notLoadedIds = [];
+        let checkedIds = [];
+
+        ids.forEach(id => {
+            if (!this.isLoaded(id) && !checkedIds.find(e => e == id) && id) {
+                notLoadedIds.push(id);
+            }
+            checkedIds.push(id);
+        });
+
+        return notLoadedIds;
+    }
+
+    /**
+     * Contrôle si l'ID d'une ressource a déjà été chargée depuis l'API
+     * 
+     * @param {number} id L'ID de la ressource à tester
+     * 
+     * @returns {bool}
+     */
+    isLoaded(id) {
+        const found = this.collection.find(e => e.id == id);
+        return found || this.isNotFound(id) ? true : false;
+    }
+
+    /**
      * Charge les informations depuis l'API
      * 
      * @param {object} payload Un payload additionnel à envoyer lors de la requête
@@ -151,6 +184,11 @@ export class AssetsCollectionController {
     async load(payload) {
         let pl = this.requestPayload ?? {};
         pl = payload ? {...pl, ...payload} : pl;
+
+        if (pl.id) {
+            let ids = pl.id.split(",");
+            pl.id = this.listNotLoadedIds(ids).join(',');
+        }
 
         const data = await this.getFromApi(this.apiRoute, pl);
 
