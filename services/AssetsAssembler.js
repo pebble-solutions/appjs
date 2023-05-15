@@ -1,9 +1,12 @@
+import { JoinKeyUndefinedException } from "../exceptions/AssetsExceptions";
+
 export class AssetsAssembler {
 
     constructor(collection) {
 
         this.inputCollection = collection;
         this.collection = JSON.parse(JSON.stringify(collection));
+        this.joinedCollections = {};
 
     }
 
@@ -25,10 +28,15 @@ export class AssetsAssembler {
         await collection.load({id: ids.join(',')});
 
         if (on) {
+            if (typeof this.joinedCollections[on] === 'undefined') {
+                this.joinedCollections[on] = [];
+            }
+
             this.collection.forEach(async (ressource) => {
-                ressource[on] = [];
                 let data = ressource[joinKey] ? await collection.getById(ressource[joinKey]) : null;
                 ressource[on] = data;
+
+                this.joinedCollections[on].push(data);
             })
         }
     }
@@ -36,9 +44,17 @@ export class AssetsAssembler {
     /**
      * Retourne le résultat de l'assembler
      * 
+     * @param {string} collectionKey
+     * 
      * @returns {object}
      */
-    getResult() {
+    getResult(collectionKey) {
+        if (collectionKey) {
+            if (typeof this.joinedCollections[collectionKey] === 'undefined') {
+                throw new JoinKeyUndefinedException(collectionKey);
+            }
+            return this.joinedCollections[collectionKey];
+        }
         return this.collection;
     }
 
