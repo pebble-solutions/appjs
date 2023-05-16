@@ -11,6 +11,7 @@ export class AssetsCollectionController {
      * - @param {string} apiRoute Nom de la route d'API à contacter pour récupérer une ressource
      * - @param {string} updateAction Nom de l'action à déclencher dans le store pour mettre à jour la collection
      * - @param {object} requestPayload Paramètres passés en GET pour chaque requêtes
+     * - @param {string} idParam Paramètre du payload transportant l'IDs ou la liste d'ID en cas de requête de liste
      */
     constructor(app, options) {
         /**
@@ -47,6 +48,11 @@ export class AssetsCollectionController {
          * Paramètres passés en GET pour chaque requête à l'API
          */
         this.requestPayload = options.requestPayload;
+
+        /**
+         * Paramètre du payload transportant l'ID ou la liste d'IDs en cas de requête de liste
+         */
+        this.idParam = options.idParam ?? 'id';
 
         /**
          * Raccourcis vers la collection
@@ -182,20 +188,24 @@ export class AssetsCollectionController {
      * @param {object} payload Un payload additionnel à envoyer lors de la requête
      */
     async load(payload) {
+        payload = typeof payload === 'undefined' ? {} : payload;
+        
         let pl = this.requestPayload ?? {};
         pl = payload ? {...pl, ...payload} : pl;
 
-        if (pl.id) {
-            let ids = pl.id.split(",");
-            pl.id = this.listNotLoadedIds(ids).join(',');
+        const idParam = this.idParam;
+
+        if (pl[idParam]) {
+            let ids = pl[idParam].split(",");
+            pl[idParam] = this.listNotLoadedIds(ids).join(',');
             
-            if (!pl.id) return;
+            if (!pl[idParam]) return;
         }
 
         const data = await this.getFromApi(this.apiRoute, pl);
 
-        if (payload?.id) {
-            const ids = payload.id.split(",");
+        if (payload[idParam]) {
+            const ids = payload[idParam].split(",");
             this.checkForNotFound(ids, data);
         }
 
