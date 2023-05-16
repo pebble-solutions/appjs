@@ -12,6 +12,7 @@ export class AssetsCollectionController {
      * - @param {string} updateAction Nom de l'action à déclencher dans le store pour mettre à jour la collection
      * - @param {object} requestPayload Paramètres passés en GET pour chaque requêtes
      * - @param {string} idParam Paramètre du payload transportant l'IDs ou la liste d'ID en cas de requête de liste
+     * - @param {string} namespace Précise le namespace du store à utiliser pour le state
      */
     constructor(app, options) {
         /**
@@ -55,9 +56,14 @@ export class AssetsCollectionController {
         this.idParam = options.idParam ?? 'id';
 
         /**
+         * Précise le namespace du store à utiliser pour le state
+         */
+        this.namespace = options.namespace ?? null;
+
+        /**
          * Raccourcis vers la collection
          */
-        this.collection = this.store.state[this.assetName];
+        this.collection = this.namespace ? this.store.state[this.namespace][this.assetName] : this.store.state[this.assetName];
 
         if (typeof this.collection === 'undefined') {
             throw new UndefinedCollectionException(this.assetName);
@@ -189,7 +195,7 @@ export class AssetsCollectionController {
      */
     async load(payload) {
         payload = typeof payload === 'undefined' ? {} : payload;
-        
+
         let pl = this.requestPayload ?? {};
         pl = payload ? {...pl, ...payload} : pl;
 

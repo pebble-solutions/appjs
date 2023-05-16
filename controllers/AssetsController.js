@@ -1,4 +1,4 @@
-import { AssetsCollectionUndefinedException, CollectionNameUsedException } from "../exceptions/AssetsExceptions";
+import { AssetsCollectionUndefinedException } from "../exceptions/AssetsExceptions";
 
 export class AssetsController {
 
@@ -13,10 +13,6 @@ export class AssetsController {
      * @param {object} collectionController Instance de la collection de ressource
      */
     addCollection(name, collectionController) {
-        if (typeof this.collections[name] !== 'undefined') {
-            throw new CollectionNameUsedException(name);
-        }
-
         this.collections[name] = collectionController;
     }
 
