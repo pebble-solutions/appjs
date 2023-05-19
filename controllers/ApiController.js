@@ -135,36 +135,43 @@ export class ApiController {
      * 
      * @param {string} route La route de l'API après la baseUrl
      * @param {string} method La méthode HTTP : GET, POST, PATCH, PUT, DELETE
-     * @param {object} query Les paramètres passés via la méthode
+     * @param {object} payload Les paramètres passés via la méthode
      * @param {object} axiosConfig Configuration du framework Axios (https://axios-http.com/docs/req_config)
      * @param {object} options 
      * - reauthenticated {boolean} true lorsque la requête a déjà été rententée
      * 
      * @return {Promise<object>}
      */
-    async query(route, method, query, axiosConfig, options) {
+    async query(route, method, payload, axiosConfig, options) {
         options = options ?? {};
 
         axiosConfig = axiosConfig ?? {};
+
+        let contentType = null;
+        if (axiosConfig.headers) {
+            if (axiosConfig.headers['Content-Type']) {
+                contentType = axiosConfig.headers['Content-Type'];
+            }
+        }
 
         if (['post', 'patch', 'put'].includes(method.toLowerCase())) {
 
             let data;
 
-            if (method.toLowerCase() === 'post') {
+            if (method.toLowerCase() === 'post' && (contentType == 'multipart/form-data' || !contentType)) {
                 data = new FormData();
-                for (let key in query) {
-                    data.append(key, query[key]);
+                for (let key in payload) {
+                    data.append(key, payload[key]);
                 }
             }
             else {
-                data = query;
+                data = payload;
             }
 
             axiosConfig.data = data;
         }
         else if (method.toLowerCase() === 'get') {
-            axiosConfig.params = query;
+            axiosConfig.params = payload;
         }
 
         axiosConfig.method = method.toLowerCase();
@@ -177,7 +184,7 @@ export class ApiController {
         }
         catch (error) {
             await this.tryAgainOrThrow(error, options);
-            return await this.query(route, method, query, axiosConfig, { reauthenticated : true });
+            return await this.query(route, method, payload, axiosConfig, { reauthenticated : true });
         }
     }
 
@@ -185,16 +192,16 @@ export class ApiController {
      * Envoie une requête GET à l'API
      * 
      * @param {string} route La route de l'API après la baseUrl
-     * @param {object} query Les paramètres passés en GET
+     * @param {object} payload Les paramètres passés en GET
      * @param {object} axiosConfig Configuration du framework Axios (https://axios-http.com/docs/req_config)
      * @param {object} options 
      * - reauthenticated {boolean} true lorsque la requête a déjà été rententée
      * 
      * @return {Promise<object>}
      */
-    async get(route, query, axiosConfig, options) {
+    async get(route, payload, axiosConfig, options) {
 
-        return await this.query(route, 'get', query, axiosConfig, options);
+        return await this.query(route, 'get', payload, axiosConfig, options);
 
     }
 
@@ -202,16 +209,16 @@ export class ApiController {
      * Envoie une requête POST à l'API
      * 
      * @param {string} route La route de l'API après baseUrl
-     * @param {object} query Les paramètres passés en POST
+     * @param {object} payload Les paramètres passés en POST
      * @param {object} axiosConfig Configuration du framework Axios (https://axios-http.com/docs/req_config)
      * @param {object} options 
      * - reauthenticated {boolean} true lorsque la requête a déjà été rententée
      * 
      * @returns {Promise<object>}
      */
-    async post(route, query, axiosConfig, options) {
+    async post(route, payload, axiosConfig, options) {
 
-        return await this.query(route, 'post', query, axiosConfig, options);
+        return await this.query(route, 'post', payload, axiosConfig, options);
 
     }
 
@@ -219,16 +226,16 @@ export class ApiController {
      * Envoie une requête PATCH à l'API
      * 
      * @param {string} route La route de l'API après baseUrl
-     * @param {object} query Les paramètres passés en PATCH
+     * @param {object} payload Les paramètres passés en PATCH
      * @param {object} axiosConfig Configuration du framework Axios (https://axios-http.com/docs/req_config)
      * @param {object} options 
      * - reauthenticated {boolean} true lorsque la requête a déjà été rententée
      * 
      * @returns {Promise<object>}
      */
-    async patch(route, query, axiosConfig, options) {
+    async patch(route, payload, axiosConfig, options) {
 
-        return await this.query(route, 'patch', query, axiosConfig, options);
+        return await this.query(route, 'patch', payload, axiosConfig, options);
 
     }
 
@@ -236,16 +243,16 @@ export class ApiController {
      * Envoie une requête PUT à l'API
      * 
      * @param {string} route La route de l'API après baseUrl
-     * @param {object} query Les paramètres passés en PUT
+     * @param {object} payload Les paramètres passés en PUT
      * @param {object} axiosConfig Configuration du framework Axios (https://axios-http.com/docs/req_config)
      * @param {object} options 
      * - reauthenticated {boolean} true lorsque la requête a déjà été rententée
      * 
      * @returns {Promise<object>}
      */
-    async put(route, query, axiosConfig, options) {
+    async put(route, payload, axiosConfig, options) {
 
-        return await this.query(route, 'put', query, axiosConfig, options);
+        return await this.query(route, 'put', payload, axiosConfig, options);
 
     }
 
