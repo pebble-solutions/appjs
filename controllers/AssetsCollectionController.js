@@ -10,6 +10,7 @@ export class AssetsCollectionController {
      * - @param {string} assetName Clé de la collection cible dans le state du store
      * - @param {string} apiRoute Nom de la route d'API à contacter pour récupérer une ressource
      * - @param {string} updateAction Nom de l'action à déclencher dans le store pour mettre à jour la collection
+     * - @param {string} resetAction Nom de l'action à déclencher dans le store pour vider la collection
      * - @param {object} requestPayload Paramètres passés en GET pour chaque requêtes
      * - @param {string} idParam Paramètre du payload transportant l'IDs ou la liste d'ID en cas de requête de liste
      * - @param {string} namespace Précise le namespace du store à utiliser pour le state
@@ -233,7 +234,6 @@ export class AssetsCollectionController {
             }
             else {
                 this.addToNotFound(id);
-
             }
         });
     }
@@ -251,4 +251,12 @@ export class AssetsCollectionController {
         return data;
     }
 
+
+    /**
+     * Ré-initialise la collection sur le store et sur le controller
+     */
+    reset() {
+        this.notFoundIds = [];
+        this.store.dispatch(this.resetAction);
+    }
 }
