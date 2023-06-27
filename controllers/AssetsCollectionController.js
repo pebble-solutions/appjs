@@ -66,16 +66,18 @@ export class AssetsCollectionController {
          */
         this.namespace = options.namespace ?? null;
 
-        /**
-         * Raccourcis vers la collection
-         */
-        this.collection = this.namespace ? this.store.state[this.namespace][this.assetName] : this.store.state[this.assetName];
-
-        if (typeof this.collection === 'undefined') {
+        if (typeof this.getCollection() === 'undefined') {
             throw new UndefinedCollectionException(this.assetName);
         }
 
         this.notFoundIds = [];
+    }
+
+    /**
+     * Intialise le raccourcis vers le contenu de la collection
+     */
+    getCollection() {
+        return this.namespace ? this.store.state[this.namespace][this.assetName] : this.store.state[this.assetName];
     }
 
     /**
@@ -94,7 +96,7 @@ export class AssetsCollectionController {
                 throw new UndefinedIdException();
             }
 
-            const found = this.collection.find(e => e.id == id);
+            const found = this.getCollection().find(e => e.id == id);
 
             if (found) {
                 this.removeFromNotFound(found.id);
@@ -190,7 +192,7 @@ export class AssetsCollectionController {
      * @returns {bool}
      */
     isLoaded(id) {
-        const found = this.collection.find(e => e.id == id);
+        const found = this.getCollection().find(e => e.id == id);
         return found || this.isNotFound(id) ? true : false;
     }
 
