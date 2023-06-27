@@ -47,6 +47,11 @@ export class AssetsCollectionController {
         this.updateAction = options.updateAction;
 
         /**
+         * Nom de l'action à déclencher dans le store pour mettre à jour la collection
+         */
+        this.resetAction = options.resetAction;
+
+        /**
          * Paramètres passés en GET pour chaque requête à l'API
          */
         this.requestPayload = options.requestPayload;
