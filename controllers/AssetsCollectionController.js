@@ -105,7 +105,7 @@ export class AssetsCollectionController {
 
             else {
                 if (this.isNotFound(id) && !options.bypass_not_found_cache) {
-                    console.warn("La ressource n'existe pas sur l'API");
+                    this.warnNotFound(id);
                     resolve(null);
                 }
                 else {
@@ -113,16 +113,26 @@ export class AssetsCollectionController {
                     .then(data => {
                         if (data) {
                             this.removeFromNotFound(id);
+                            this.store.dispatch(this.updateAction, [data]);
                         }
                         else {
+                            this.warnNotFound(id);
                             this.addToNotFound(id);
                         }
-                        this.store.dispatch(this.updateAction, [data]);
                         resolve(data);
                     });
                 }
             }
         })
+    }
+
+    /**
+     * Log un message d'erreur dans la console en cas de ressource par ID non trouvée.
+     * 
+     * @param {number} id           ID de la ressource non trouvée.
+     */
+    warnNotFound(id) {
+        console.warn(`Aucune ressource trouvée sur l'API ${this.apiRoute}/${id}`);
     }
 
     /**
