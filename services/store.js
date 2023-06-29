@@ -1,5 +1,5 @@
 /**
- * Met à jour une collection de donnée dans le store
+ * Met à jour une collection de données dans le store
  * 
  * @param {object} state Le state de VueX
  * @param {object} collectionOptions Options de la collection à faire mutter

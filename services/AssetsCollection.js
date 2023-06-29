@@ -1,6 +1,6 @@
 import { UndefinedCollectionException, UndefinedIdException } from "../exceptions/AssetsCollectionExceptions";
 
-export class AssetsCollectionController {
+export class AssetsCollection {
 
     /**
      * Initialise le controller
