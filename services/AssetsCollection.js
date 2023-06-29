@@ -1,4 +1,5 @@
 import { UndefinedCollectionException, UndefinedIdException } from "../exceptions/AssetsCollectionExceptions";
+import { dataCollectionMutation } from "./store";
 
 export class AssetsCollection {
 
@@ -113,7 +114,7 @@ export class AssetsCollection {
                     .then(data => {
                         if (data) {
                             this.removeFromNotFound(id);
-                            this.store.dispatch(this.updateAction, [data]);
+                            this.updateCollection([data]);
                         }
                         else {
                             this.warnNotFound(id);
@@ -233,7 +234,7 @@ export class AssetsCollection {
             this.checkForNotFound(ids, data);
         }
 
-        this.store.dispatch(this.updateAction, data);
+        this.updateCollection(data);
     }
 
     /**
@@ -274,6 +275,34 @@ export class AssetsCollection {
      */
     reset() {
         this.notFoundIds = [];
-        this.store.dispatch(this.resetAction);
+        if (this.resetAction) {
+            this.store.dispatch(this.resetAction);
+        }
+        else {
+            dataCollectionMutation(this.store.state, {
+                assetName: this.assetName,
+                action: "replace",
+                collection: []
+            });
+        }
+    }
+
+    
+    /**
+     * Met à jour des données sur le store
+     * 
+     * @param {array} collection La nouvelle collection à intégrer au store
+     */
+    updateCollection(collection) {
+        if (this.updateAction) {
+            this.store.dispatch(this.updateAction, collection);
+        }
+        else {
+            dataCollectionMutation(this.store.state, {
+                assetName: this.assetName,
+                action: "refresh",
+                collection
+            });
+        }
     }
 }
