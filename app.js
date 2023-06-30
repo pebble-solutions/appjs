@@ -6,6 +6,7 @@ import { StructureUnavailableError, AuthProviderUnreferencedError, LicenceNotFou
 import {Licence} from "./models/Licence";
 import { ApiController } from "./controllers/ApiController";
 import { PasServer } from "./models/PasServer";
+import { removeFromMenu, setMenuItem } from "./services/menu";
 
 let LOCAL_ENV = null;
 
@@ -795,5 +796,27 @@ export default class App {
         this.dispatchEvent('licenceChanged', this.licence);
 
         return this.local_user;
+    }
+
+    /**
+     * Ajoute ou modifie un élément au menu
+     * 
+     * @param {object} menuItem Élément de menu à ajouter
+     * - {string} key       Clé unique de l'élément de menu
+     * - {string} href      Route de l'élément
+     * - {string} label     Libellé pour l'affichage
+     * - {string} icon      Class d'icon
+     */
+    setMenuItem(menuItem) {
+        setMenuItem(this, menuItem);
+    }
+
+    /**
+     * Retire un élément du menu
+     * 
+     * @param {string} key La clé unique de l'élément de menu
+     */
+    removeFromMenu(key) {
+        removeFromMenu(this, key);
     }
 }
