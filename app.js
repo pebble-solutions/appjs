@@ -669,7 +669,7 @@ export default class App {
                         this.dispatchEvent('licencesRetrieved', licences);
                     }
                 })
-                .catch(e => this.dispatchEvent('authError', e.message))
+                .catch(e => this.dispatchEvent('authError', e))
                 .finally(() => {
                     if (!this.authInited) {
                         this.authInited = true;
@@ -695,7 +695,7 @@ export default class App {
      * @returns {Promise} la valeur retournée est un tableau de licences ou null
      */
     autoSelectLicences() {
-        return new Promise((resolve) => {
+        return new Promise((resolve, reject) => {
             let licence = sessionStorage.getItem('licence');
 
             if (licence) {
@@ -706,7 +706,7 @@ export default class App {
                 this.getLicences()
                 .then((licences) => {
                     resolve(licences);
-                })
+                }).catch(message => reject(message))
             }
         });
     }
@@ -719,7 +719,7 @@ export default class App {
      * @returns {Promise}
      */
     getLicences() {
-        return new Promise((resolve) => {
+        return new Promise((resolve, reject) => {
             if (this.licences) {
                 resolve(this.licences);
             }
@@ -752,6 +752,9 @@ export default class App {
                         this.licences = licences;
 
                         resolve(this.licences)
+                    }).catch(error => {
+                        console.error(error);
+                        reject("Le serveur d'authentification à retourné une erreur : "+error.message);
                     });
                 });
             }
