@@ -15,6 +15,7 @@ export class AssetsCollection {
      * - @param {object} requestPayload Paramètres passés en GET pour chaque requêtes
      * - @param {string} idParam Paramètre du payload transportant l'IDs ou la liste d'ID en cas de requête de liste
      * - @param {string} namespace Précise le namespace du store à utiliser pour le state
+     * - @param {object} axiosConfig Configuration axios envoyée lors des requêtes à l'API
      */
     constructor(app, options) {
         /**
@@ -72,6 +73,8 @@ export class AssetsCollection {
         }
 
         this.notFoundIds = [];
+
+        this.axiosConfig = typeof options.axiosConfig !== 'undefined' ? options.axiosConfig : {};
     }
 
     /**
@@ -261,11 +264,13 @@ export class AssetsCollection {
      * 
      * @param {string} route Nom de la route d'API à contacter
      * @param {object} payload Payload à passer sur la requête
+     * @param {object} axiosConfig Cette configuration écrase la configuration générale
      * 
      * @returns {Promise}
      */
-    async getFromApi(route, payload) {
-        const data = await this.api.get(route, payload);
+    async getFromApi(route, payload, axiosConfig) {
+        axiosConfig = typeof axiosConfig !== 'undefined' ? axiosConfig : this.axiosConfig;
+        const data = await this.api.get(route, payload, axiosConfig);
         return data;
     }
 
