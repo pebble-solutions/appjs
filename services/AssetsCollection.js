@@ -267,8 +267,10 @@ export class AssetsCollection {
      * @param {bool} val Valeur à affecter au pending
      */
     setPending(val) {
-        if (typeof this.store.state?.pending[this.pendingKey] !== 'undefined') {
-            this.store.state.pending[this.pendingKey] = val;
+        if (typeof this.store.state?.pending !== 'undefined') {
+            if (typeof this.store.state.pending[this.pendingKey] !== 'undefined') {
+                this.store.state.pending[this.pendingKey] = val;
+            }
         }
     }
 
