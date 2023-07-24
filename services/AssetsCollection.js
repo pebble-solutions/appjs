@@ -16,6 +16,7 @@ export class AssetsCollection {
      * - @param {string} idParam Paramètre du payload transportant l'IDs ou la liste d'ID en cas de requête de liste
      * - @param {string} namespace Précise le namespace du store à utiliser pour le state
      * - @param {object} axiosConfig Configuration axios envoyée lors des requêtes à l'API
+     * - @param {string} pendingKey Clé stockant la mise en attente des requête dans le state. Cette clé doit se trouver dans state.pending
      */
     constructor(app, options) {
         /**
@@ -74,7 +75,15 @@ export class AssetsCollection {
 
         this.notFoundIds = [];
 
+        /**
+         * Configuration passée à Axios à chaque requête
+         */
         this.axiosConfig = typeof options.axiosConfig !== 'undefined' ? options.axiosConfig : {};
+
+        /**
+         * Clé de state.pending contenant la mise en attente de la requête.
+         */
+        this.pendingKey = typeof options.pendingKey !== 'undefined' ? options.pendingKey : this.assetName;
     }
 
     /**
@@ -214,8 +223,13 @@ export class AssetsCollection {
      * Charge les informations depuis l'API
      * 
      * @param {object} payload Un payload additionnel à envoyer lors de la requête
+     * 
+     * @return {Promise<array>}
      */
     async load(payload) {
+
+        this.setPending(true);
+
         payload = typeof payload === 'undefined' ? {} : payload;
 
         let pl = this.requestPayload ?? {};
@@ -230,14 +244,32 @@ export class AssetsCollection {
             if (!pl[idParam]) return;
         }
 
-        const data = await this.getFromApi(this.apiRoute, pl);
-
-        if (payload[idParam]) {
-            const ids = payload[idParam].split(",");
-            this.checkForNotFound(ids, data);
+        try {
+            const data = await this.getFromApi(this.apiRoute, pl);
+    
+            if (payload[idParam]) {
+                const ids = payload[idParam].split(",");
+                this.checkForNotFound(ids, data);
+            }
+    
+            this.updateCollection(data);
+        
+            return data;
         }
+        finally {
+            this.setPending(false);
+        }
+    }
 
-        this.updateCollection(data);
+    /**
+     * Modifie l'état de la requête
+     * 
+     * @param {bool} val Valeur à affecter au pending
+     */
+    setPending(val) {
+        if (typeof this.store.state?.pending[this.pendingKey] !== 'undefined') {
+            this.store.state.pending[this.pendingKey] = val;
+        }
     }
 
     /**
