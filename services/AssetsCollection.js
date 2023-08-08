@@ -84,6 +84,21 @@ export class AssetsCollection {
          * Clé de state.pending contenant la mise en attente de la requête.
          */
         this.pendingKey = typeof options.pendingKey !== 'undefined' ? options.pendingKey : this.assetName;
+
+        /**
+         * Stocke true lorsque la méthode load a été appelée
+         */
+        this.loaderStatus = false;
+
+        /**
+         * Stocke le nombre de fois ou la méthode load a été applelée
+         */
+        this.loaderCount = 0;
+
+        /**
+         * Stocke la date et l'heure du dernier appel à la méthode load
+         */
+        this.lastDateLoader = null;
     }
 
     /**
@@ -258,6 +273,7 @@ export class AssetsCollection {
         }
         finally {
             this.setPending(false);
+            this.updateLoaderStatus();
         }
     }
 
@@ -343,5 +359,38 @@ export class AssetsCollection {
                 collection
             });
         }
+    }
+
+    /**
+     * Incrémente les informations du loader
+     */
+    updateLoaderStatus() {
+        this.loaderStatus = true;
+        this.lastDateLoader = new Date();
+        this.loaderCount += 1;
+    }
+
+    /**
+     * Retourne vrais si le loader a été appelé au moins une fois
+     * @returns {boolean}
+     */
+    getLoaderStatus() {
+        return this.loaderStatus;
+    }
+
+    /**
+     * Retourne la date du dernier appel du loader
+     * @returns {Date}
+     */
+    getLastDateLoader() {
+        return this.lastDateLoader;
+    }
+
+    /**
+     * Retourne le nombre de fois ou le loader a été appelé
+     * @returns {number}
+     */
+    getLoaderCount() {
+        return this.loaderCount;
     }
 }
