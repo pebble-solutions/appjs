@@ -28,7 +28,9 @@ export class AssetsAssembler {
         let payload = {};
         payload[collection.idParam] = ids.join(',');
 
-        await collection.load(payload);
+        if (payload[collection.idParam]) {
+            await collection.load(payload);
+        }
 
         if (on) {
             if (typeof this.joinedCollections[on] === 'undefined') {
