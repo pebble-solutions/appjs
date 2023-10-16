@@ -15,6 +15,8 @@ export class AssetsCollection {
      * - @param {object} requestPayload Paramètres passés en GET pour chaque requêtes
      * - @param {string} idParam Paramètre du payload transportant l'IDs ou la liste d'ID en cas de requête de liste
      * - @param {string} namespace Précise le namespace du store à utiliser pour le state
+     * - @param {object} axiosConfig Configuration axios envoyée lors des requêtes à l'API
+     * - @param {string} pendingKey Clé stockant la mise en attente des requête dans le state. Cette clé doit se trouver dans state.pending
      */
     constructor(app, options) {
         /**
@@ -72,6 +74,31 @@ export class AssetsCollection {
         }
 
         this.notFoundIds = [];
+
+        /**
+         * Configuration passée à Axios à chaque requête
+         */
+        this.axiosConfig = typeof options.axiosConfig !== 'undefined' ? options.axiosConfig : {};
+
+        /**
+         * Clé de state.pending contenant la mise en attente de la requête.
+         */
+        this.pendingKey = typeof options.pendingKey !== 'undefined' ? options.pendingKey : this.assetName;
+
+        /**
+         * Stocke true lorsque la méthode load a été appelée
+         */
+        this.loaderStatus = false;
+
+        /**
+         * Stocke le nombre de fois ou la méthode load a été applelée
+         */
+        this.loaderCount = 0;
+
+        /**
+         * Stocke la date et l'heure du dernier appel à la méthode load
+         */
+        this.lastDateLoader = null;
     }
 
     /**
@@ -211,8 +238,13 @@ export class AssetsCollection {
      * Charge les informations depuis l'API
      * 
      * @param {object} payload Un payload additionnel à envoyer lors de la requête
+     * 
+     * @return {Promise<array>}
      */
     async load(payload) {
+
+        this.setPending(true);
+
         payload = typeof payload === 'undefined' ? {} : payload;
 
         let pl = this.requestPayload ?? {};
@@ -227,14 +259,35 @@ export class AssetsCollection {
             if (!pl[idParam]) return;
         }
 
-        const data = await this.getFromApi(this.apiRoute, pl);
-
-        if (payload[idParam]) {
-            const ids = payload[idParam].split(",");
-            this.checkForNotFound(ids, data);
+        try {
+            const data = await this.getFromApi(this.apiRoute, pl);
+    
+            if (payload[idParam]) {
+                const ids = payload[idParam].split(",");
+                this.checkForNotFound(ids, data);
+            }
+    
+            this.updateCollection(data);
+        
+            return data;
         }
+        finally {
+            this.setPending(false);
+            this.updateLoaderStatus();
+        }
+    }
 
-        this.updateCollection(data);
+    /**
+     * Modifie l'état de la requête
+     * 
+     * @param {bool} val Valeur à affecter au pending
+     */
+    setPending(val) {
+        if (typeof this.store.state?.pending !== 'undefined') {
+            if (typeof this.store.state.pending[this.pendingKey] !== 'undefined') {
+                this.store.state.pending[this.pendingKey] = val;
+            }
+        }
     }
 
     /**
@@ -261,11 +314,13 @@ export class AssetsCollection {
      * 
      * @param {string} route Nom de la route d'API à contacter
      * @param {object} payload Payload à passer sur la requête
+     * @param {object} axiosConfig Cette configuration écrase la configuration générale
      * 
      * @returns {Promise}
      */
-    async getFromApi(route, payload) {
-        const data = await this.api.get(route, payload);
+    async getFromApi(route, payload, axiosConfig) {
+        axiosConfig = typeof axiosConfig !== 'undefined' ? axiosConfig : this.axiosConfig;
+        const data = await this.api.get(route, payload, axiosConfig);
         return data;
     }
 
@@ -304,5 +359,38 @@ export class AssetsCollection {
                 collection
             });
         }
+    }
+
+    /**
+     * Incrémente les informations du loader
+     */
+    updateLoaderStatus() {
+        this.loaderStatus = true;
+        this.lastDateLoader = new Date();
+        this.loaderCount += 1;
+    }
+
+    /**
+     * Retourne vrais si le loader a été appelé au moins une fois
+     * @returns {boolean}
+     */
+    getLoaderStatus() {
+        return this.loaderStatus;
+    }
+
+    /**
+     * Retourne la date du dernier appel du loader
+     * @returns {Date}
+     */
+    getLastDateLoader() {
+        return this.lastDateLoader;
+    }
+
+    /**
+     * Retourne le nombre de fois ou le loader a été appelé
+     * @returns {number}
+     */
+    getLoaderCount() {
+        return this.loaderCount;
     }
 }
