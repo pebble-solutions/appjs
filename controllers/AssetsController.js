@@ -13,6 +13,7 @@ export class AssetsController {
      * @param {object} collectionController Instance de la collection de ressource
      */
     addCollection(name, collectionController) {
+        collectionController.reset();
         this.collections[name] = collectionController;
     }
 
@@ -25,6 +26,7 @@ export class AssetsController {
      * @return {Promise}
      */
     async import(name, collectionController) {
+        collectionController.reset();
         await collectionController.load();
         this.addCollection(name, collectionController);
     }
