@@ -11,9 +11,20 @@ export class AssetsController {
      * 
      * @param {string} name Nom de la collection de ressources
      * @param {object} collectionController Instance de la collection de ressource
+     * @param {object} options
+     * - resetOnInit            true (par défaut). Réinitialise la collection avant son initialisation
      */
-    addCollection(name, collectionController) {
-        collectionController.reset();
+    addCollection(name, collectionController, options) {
+        options = typeof options === "undefined" ? {} : options;
+
+        if (typeof options.resetOnInit === "undefined") {
+            options.resetOnInit = true;
+        }
+
+        if (options.resetOnInit) {
+            collectionController.reset();
+        }
+
         this.collections[name] = collectionController;
     }
 
@@ -28,7 +39,7 @@ export class AssetsController {
     async import(name, collectionController) {
         collectionController.reset();
         await collectionController.load();
-        this.addCollection(name, collectionController);
+        this.addCollection(name, collectionController, { resetOnInit: false });
     }
 
     /**

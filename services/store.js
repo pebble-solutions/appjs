@@ -18,7 +18,7 @@ export function dataCollectionMutation(state, collectionOptions) {
     else {
         collection.forEach(data => {
             if (action === 'remove') {
-                const index = state[assetName].find(e => e.id == data.id);
+                const index = state[assetName].findIndex(e => e.id == data.id);
 
                 if (index !== -1) {
                     state[assetName].splice(index, 1);

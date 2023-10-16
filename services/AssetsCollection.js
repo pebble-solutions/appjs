@@ -362,6 +362,19 @@ export class AssetsCollection {
     }
 
     /**
+     * Retire une ressource de la collection
+     * 
+     * @param {number} id L'ID à retirer de la collection
+     */
+    removeAssetById(id) {
+        dataCollectionMutation(this.store.state, {
+            assetName: this.assetName,
+            action: "remove",
+            collection: [{id}]
+        });
+    }
+
+    /**
      * Incrémente les informations du loader
      */
     updateLoaderStatus() {
